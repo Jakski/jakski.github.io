@@ -1,0 +1,66 @@
+{
+	"title": "Jakski's blog",
+	"pages": [
+		{
+			"title": "Advanced curl usage",
+			"type": "post",
+			"date": "2019-05-26",
+			"template": "page-template.html",
+			"output": "pages/advanced-curl-usage.html",
+			"markdown": "posts/advanced-curl-usage.md"
+		},
+		{
+			"title": "Neovim error: Channel doesn't exist",
+			"type": "post",
+			"date": "2019-02-09",
+			"template": "page-template.html",
+			"output": "pages/neovim-channel-doesnt-exist-error.html",
+			"markdown": "posts/neovim-channel-doesnt-exist-error.md"
+		},
+		{
+			"title": "Debugging Go in Kubernetes",
+			"type": "post",
+			"date": "2018-11-11",
+			"template": "page-template.html",
+			"output": "pages/debugging-golang-in-kubernetes.html",
+			"markdown": "posts/debugging-golang-in-kubernetes.md"
+		},
+		{
+			"title": "Debugging Docker container",
+			"type": "post",
+			"date": "2018-07-18",
+			"template": "page-template.html",
+			"output": "pages/debugging-docker-container.html",
+			"markdown": "posts/debugging-docker-container.md"
+		},
+		{
+			"title": "Documenting Ansible roles",
+			"type": "post",
+			"date": "2018-06-26",
+			"template": "page-template.html",
+			"output": "pages/documenting-ansible-roles.html",
+			"markdown": "posts/documenting-ansible-roles.md"
+		},
+		{
+			"title": "Unprivileged QEMU",
+			"type": "post",
+			"date": "2018-06-14",
+			"template": "page-template.html",
+			"output": "pages/safe-development-environment.html",
+			"markdown": "posts/safe-development-environment.md"
+		},
+		{
+			"title": "Upgrading kernel on OVH VPS",
+			"type": "post",
+			"date": "2018-02-04",
+			"template": "page-template.html",
+			"output": "pages/ovh-kernel-upgrade.html",
+			"markdown": "posts/ovh-kernel-upgrade.md"
+		},
+		{
+			"title": "index",
+			"template": "index-template.html",
+			"output": "index.html"
+		}
+	]
+}

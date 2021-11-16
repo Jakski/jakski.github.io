@@ -1,0 +1,9 @@
+[wrap-file]
+directory = mustach-1.2.2
+source_url = https://gitlab.com/jobol/mustach/-/archive/1.2.2/mustach-1.2.2.tar.gz
+source_filename = mustach-1.2.2.tar.gz
+source_hash = ab5fb5763eb92713a85733aa7fdbc0ec5f50f75d67fa1d8ca6a820c66126a606
+patch_directory = mustach
+
+[provide]
+mustach = mustach_dep

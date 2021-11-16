@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>Upgrading kernel on OVH VPS</title>
+	<link href="/style.css" rel="stylesheet">
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+</head>
+<body>
+	<h1 id="title">
+		<a href="/">
+			Jakski's blog
+		</a>
+	</h1>
+	<!-- START BODY -->
+	<p>Recently I noticed that despite upgrading kernel on my OVH VPS it's still using
+old version. After some research I discovered that OVH base image(Debian 8, VPS
+2016 SSD 1) uses extlinux to manage master boot record. While I was used to self
+updating GRUB configuration, extlinux didn't point to new kernel automatically
+after upgrade. I found it's configuration in
+<em>/boot/extlinux/extlinux.conf</em>:</p>
+<pre><code>default linux
+timeout 1
+label linux
+kernel boot/vmlinuz-3.16.0-4-amd64
+append initrd=boot/initrd.img-3.16.0-4-amd64 root=/dev/vda1 console=tty0
+console=ttyS0,115200 ro quiet
+</code></pre>
+<p>changed paths to initial RAM disk and Linux image:</p>
+<pre><code>default linux
+timeout 1
+label linux
+kernel ../vmlinuz-4.9.0-8-amd64
+append initrd=../initrd.img-4.9.0-8-amd64 root=/dev/vda1 console=tty0
+console=ttyS0,115200 ro quiet
+</code></pre>
+<p>and updated extlinux with:</p>
+<pre><code>$ extlinux --install /boot/extlinux
+</code></pre>
+<p>After reboot extlinux loaded fresh kernel.</p>
+
+	<!-- END BODY -->
+</body>
+</html>

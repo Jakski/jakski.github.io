@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>Debugging Docker container</title>
+	<link href="/style.css" rel="stylesheet">
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+</head>
+<body>
+	<h1 id="title">
+		<a href="/">
+			Jakski's blog
+		</a>
+	</h1>
+	<!-- START BODY -->
+	<p>Docker is all about caging some process sub-tree in isolated prison with
+provided resources. It's quite practical to have development environment
+separated in disposable containers. Problem arises, when we want to debug
+something that's imprisoned. Of course we can observe logs and check status
+of our containers, but sometimes the most practical thing to do is to enter our
+container prison and see for ourselves how everything works inside.</p>
+<h1>Native Docker way of entering prison(container)</h1>
+<p>Docker equips us with sub-command <em>exec</em>. It's the easiest way to enter exactly
+the same environment as our imprisoned processes are using. While debugging, the
+most useful <em>exec</em> you can invoke is usually interactive shell like:</p>
+<pre><code>$ docker exec -it backend_app_1 /bin/sh
+</code></pre>
+<p>After this we're ready to start issuing commands inside container and diagnose
+further bugs. This will launch command with same user as specified in
+<em>Dockerfile</em>. What, if you want e.g. to enter container as a <em>root</em>? <em>-u</em> flag
+comes with help. Simply type:</p>
+<pre><code>$ docker exec -itu root backend_app_1 /bin/sh
+</code></pre>
+<p>and you're good to go.</p>
+<h1>Dirty way of entering prison</h1>
+<p>As you probably already know, Linux containers are made of namespaces. They are
+used to virtualise resources presented to imprisoned processes. Because they
+aren't monolithic, you can enter only some of them, without being fully
+imprisoned. It's useful, if you have some diagnostic tools on your host system,
+which you want to invoke in your container. <em>docker-exec</em> would normally put you
+inside all namespaces of running container. Tool <em>nsenter</em> will let you
+explicitly choose what you want to derive from container in some process. How
+you can find what namespaces to enter? You need to know only PID of running
+process. Since processes in containers are visible in our process tree, you can
+simply <em>grep</em> through <em>ps -eF</em> output. Let's say you are looking for container
+with <em>uwsgi</em> running inside:</p>
+<pre><code>$ ps -eF | grep uwsgi
+</code></pre>
+<p>You should see at least one <em>uwsgi</em> process, if you're really running it. Now
+let's use <em>nsenter</em> to enter it's network namespace alone:</p>
+<pre><code>$ nsenter -n -t &lt;pid&gt;
+</code></pre>
+<p>Now you're in same network namespace as imprisoned process. Note that you can
+now diagnose network with all you tools from host system since you mount
+namespace wasn't touched.</p>
+<h1>Duplicating container's environment</h1>
+<p>Sometimes init script just fails without any readable reason, leaving container
+crashed without any processes in it. You cannot enter inactive prison. You can of
+course inspect it's environment like volumes used by it. After initial analysis
+you will probably want to reproduce problem in controlled circumstances, e.g.
+by invoking entrance script in already imprisoned shell. Let's say you would
+like to debug crushed container <em>backend_app_1</em>:</p>
+<pre><code>$ docker ps -a --format='{{.Names}} {{.Status}}' -f &quot;name=backend_app_1&quot;
+backend_app_1 Exited (137) 9 hours ago
+</code></pre>
+<p>You cannot run shell in container with this state. You save it's current state
+though:</p>
+<pre><code>$ docker commit backend_app_1 backend_app:debug
+</code></pre>
+<p>To list all images matching tag <em>debug</em>:</p>
+<pre><code>$ docker images -f 'reference=`:debug'
+REPOSITORY          TAG                 IMAGE ID            CREATED             SIZE
+backend_app         debug               8185ea95bd7d        2 minutes ago       215MB
+</code></pre>
+<p>Now you can run this saved state with volumes from original container:</p>
+<pre><code>$ docker run -it --entrypoint /bin/sh --volumes-from backend_app_1 --name debug backend_app:debug
+</code></pre>
+<p>If you need some networks from original container, you can inspect it and plug
+debug container like, so:</p>
+<pre><code>$ docker network connect backend_default debug
+</code></pre>
+<h1>Final thoughts</h1>
+<p>I've described a few methods of getting into position of imprisoned processes.
+Remember that all resources used, by containers are actually visible on your
+host system, so entering prison isn't always required, e.g. if you want to
+diagnose you container with <em>strace</em> you don't have to enter it's namespaces.
+Container's PID namespace is perfectly visible to you. If you can locate
+container in you process tree, you can as well invoke <em>strace</em> passing host PID
+as argument rather then installing it in container and trying to debug from
+inside.</p>
+
+	<!-- END BODY -->
+</body>
+</html>
