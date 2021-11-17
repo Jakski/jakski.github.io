@@ -99,10 +99,22 @@ blockquote {
 	padding-right: 0.5rem;
 	padding-left: 1.5rem;
 }
+header {
+	padding-bottom: 1rem;
+}
+#post-title {
+	text-decoration: underline;
+}
+#post-date {
+	font-size: 1rem;
+	font-family: monospace;
+	font-style: italic;
+}
 #posts-list-item {
 	padding-top: 0.5rem;
 	padding-bottom: 0.5rem;
 }
 #title {
 	font-size: 3rem;
+	border-bottom: solid black 1px;
 }

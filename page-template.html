@@ -13,6 +13,12 @@
 		</a>
 	</h1>
 	<!-- START BODY -->
+	<header>
+		<h1 id="post-title">{{page.title}}</h1>
+		<time id="post-date" datetime="{{page.date}}">
+			{{page.date}}
+		</time>
+	</header>
 	{{&content}}
 	<!-- END BODY -->
 </body>
