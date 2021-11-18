@@ -26,7 +26,7 @@ usable. Note that idea below probably isn't be the best for long term, but
 often any solution is better than no solution at all.</p>
 <h1>Requirements</h1>
 <p>By operator I mean person responsible for service reliability. Ideally that
-would be someone involed in website development or hosting maintainer.</p>
+would be someone involved in website development or hosting maintainer.</p>
 <blockquote>
 <p><strong>Protip</strong>: Notifications are the most effective when receiver knows how to
 react on them.</p>
@@ -43,7 +43,7 @@ self-hosting and open-source.</li>
 </ul>
 <h1>Incremental development</h1>
 <p>Let's assume that we're dealing with website hosted on a cheap GNU/Linux VPS
-instance and consists of application exposed via HTTPS. It makes
+instance that consists of application exposed via HTTPS. It makes
 sense to check liveness at minimum. For now we don't care, if our application
 performs well. Availability is our only concern.</p>
 <h2>Basic HTTP service check with notification</h2>
@@ -106,7 +106,7 @@ context what exactly went wrong like:</p>
 <h2>Service is available, but does it perform well?</h2>
 <p>While performance can be measured in many ways, we will focus on one simple
 metric: <em>response time</em>. <code>curl</code> can measure it out-of-the-box, but we will need
-to invoke it diffrently and format output message:</p>
+to invoke it differently and format output message:</p>
 <pre><code># on_exit version supporting custom EXIT_CODE
 on_exit() {
     local exit_code=$?
@@ -133,7 +133,7 @@ main () {
 </code></pre>
 <h2>What about other metrics?</h2>
 <p><em>Healthchecks</em> limits us to 10 kilobytes payload for each ping, but remember
-that we want to keep it simple, so it's not much of a problem. Rerranging our
+that we want to keep it simple, so it's not much of a problem. Rearranging our
 script into self-descriptive functions will be useful to include more checks:</p>
 <pre><code># Trigger alert when used memory exceeds 95%
 CHECK_MEMORY_THRESHOLD=95
@@ -187,7 +187,7 @@ check_ssl() {
 </code></pre>
 <p>Of course it's not the most beautiful and performance oriented way of monitoring
 website, but it serves the purpose. No special software nor planning is required
-here, so it may be a great adhoc solution while you plan long term monitoring
+here, so it may be a great ad-hoc solution while you plan long term monitoring
 system like Icinga2, Prometheus or Zabbix.</p>
 <p>Full script can be found <a href="/media/low-effort-monitoring.sh">here</a>.</p>
 

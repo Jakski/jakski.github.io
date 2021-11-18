@@ -7,7 +7,7 @@ often any solution is better than no solution at all.
 # Requirements
 
 By operator I mean person responsible for service reliability. Ideally that
-would be someone involed in website development or hosting maintainer.
+would be someone involved in website development or hosting maintainer.
 
 > **Protip**: Notifications are the most effective when receiver knows how to
   react on them.
@@ -24,7 +24,7 @@ would be someone involed in website development or hosting maintainer.
 # Incremental development
 
 Let's assume that we're dealing with website hosted on a cheap GNU/Linux VPS
-instance and consists of application exposed via HTTPS. It makes
+instance that consists of application exposed via HTTPS. It makes
 sense to check liveness at minimum. For now we don't care, if our application
 performs well. Availability is our only concern.
 
@@ -99,7 +99,7 @@ curl: (7) Failed to connect to app.local port 443: Connection refused
 
 While performance can be measured in many ways, we will focus on one simple
 metric: *response time*. `curl` can measure it out-of-the-box, but we will need
-to invoke it diffrently and format output message:
+to invoke it differently and format output message:
 
 ```
 # on_exit version supporting custom EXIT_CODE
@@ -130,7 +130,7 @@ main () {
 ## What about other metrics?
 
 *Healthchecks* limits us to 10 kilobytes payload for each ping, but remember
-that we want to keep it simple, so it's not much of a problem. Rerranging our
+that we want to keep it simple, so it's not much of a problem. Rearranging our
 script into self-descriptive functions will be useful to include more checks:
 
 ```
@@ -194,7 +194,7 @@ We can run this script every minute from cron:
 
 Of course it's not the most beautiful and performance oriented way of monitoring
 website, but it serves the purpose. No special software nor planning is required
-here, so it may be a great adhoc solution while you plan long term monitoring
+here, so it may be a great ad-hoc solution while you plan long term monitoring
 system like Icinga2, Prometheus or Zabbix.
 
 Full script can be found [here](/media/low-effort-monitoring.sh).
