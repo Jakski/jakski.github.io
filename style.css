@@ -30,7 +30,7 @@ body {
 	padding-left: 3%;
 	padding-right: 3%;
 }
-@media (min-width: 768px) {
+@media (min-width: 1280px) {
 	body {
 		padding-left: 20%;
 		padding-right: 20%;
@@ -81,6 +81,7 @@ em {
 	font-size: 1rem;
 }
 h1, h2, h3, h4 {
+	line-height: 1.25;
 	padding-top: 0.5rem;
 	padding-bottom: 0.5rem;
 }
