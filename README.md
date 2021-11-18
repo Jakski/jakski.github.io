@@ -18,5 +18,5 @@ Debian packages:
 ```
 $ meson setup build
 $ meson compile -C build
-$ ./build/jakski-blog
+$ ./build/jakski-blog cfg.json
 ```

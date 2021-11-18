@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>Low effort website monitoring</title>
+	<link href="/style.css" rel="stylesheet">
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+</head>
+<body>
+	<h1 id="title">
+		<a href="/">
+			Jakski's blog
+		</a>
+	</h1>
+	<!-- START BODY -->
+	<header>
+		<h1 id="post-title">Low effort website monitoring</h1>
+		<time id="post-date" datetime="2021-11-18">
+			2021-11-18
+		</time>
+	</header>
+	<p>While the most lazy website monitoring implementation would be probably to check
+it in <code>cron</code> with <code>curl</code> every few minutes and send message on outage, I'm going
+to present a slightly more sophisticated solution to make it a little more
+usable. Note that idea below probably won't be the best for long term, but
+often any solution is better than no solution at all.</p>
+<h1>Requirements</h1>
+<p>By operator I mean person responsible for service reliability. Ideally that
+would be someone involed in website development or hosting maintainer.</p>
+<blockquote>
+<p><strong>Protip</strong>: Notifications are the most effective when receiver knows to react on
+them.</p>
+</blockquote>
+<ul>
+<li>Operator must be notified on outage.</li>
+<li>Monitoring must not rely on website hosting availability. I'm talking about
+single node deployments here. Operator must be informed not only when check
+failed, but also when check wasn't performed.</li>
+<li>Monitoring must provide reason for notification. Messages like <em>It's not
+working</em> aren't very insightful.</li>
+<li>Implementation must be simple, lightweight and cheap. Preferably allowing
+self-hosting and open-source.</li>
+</ul>
+<h1>Incremental development</h1>
+<p>Let's assume that we're dealing with website hosted on a cheap GNU/Linux VPS
+instance and our application consists of application exposed via HTTPS. It makes
+sense to check liveness at minimum. For now we don't care, if our application
+performs well. Availability is our only concern.</p>
+<h2>Basic HTTP service check with notification</h2>
+<p>To keep things simple and increase reliability we will keep service checking and
+reporting/notifying logic separately.</p>
+<ul>
+<li><em>Service checking</em> - Since shell is usually available out-of-the-box we will
+build service checks using widely available command line tools.</li>
+<li><em>Reporting/notyfing</em> - This is a bit harder. Keep in mind that we need
+notifications also, when service checking hasn't finished on time. Hosting
+anything on the same node as application will not be sufficient. Using
+external service might introduce vendor lock-in, but we want it cheap.
+Fortunately there's some middle ground like
+<a href="https://healthchecks.io">Healthchecks</a> - an open source monitoring platform,
+also hosted as a service with free subscription tier.</li>
+</ul>
+<p>Using <em>Healthchecks</em> means that we will need to notify external service about
+service check results. <code>curl</code> will do the job here. Let's start with some
+minimal script:</p>
+<pre><code>#!/usr/bin/env bash
+
+CURL_OPTIONS=&quot;--max-time 5 --retry 3 --fail --silent --show-error&quot;
+SERVICE_URL=https://app.local/
+HEALTCHECK_URL=https://hc-ping.com/82583301-bd04-4028-9695-fc5473abc15d
+
+curl $CURL_OPTIONS &quot;$SERVICE_URL&quot;
+curl $CURL_OPTIONS &quot;${HEALTCHECK_URL}/${?}&quot;
+</code></pre>
+<p>Above script will send it's status code in ping to <em>Healthchecks</em>, where we
+should configure notifications(Telegram integration works well) and <strong>Schedule</strong> -
+it's crucial to receive alert when our service is not sending any pings, it
+may mean that whole VPS is down. Yet we still don't have context what exactly
+went wrong. Let's use <a href="http://redsymbol.net/articles/unofficial-bash-strict-mode/">Bash strict
+mode</a> and change
+script to send <code>curl</code> error text in ping:</p>
+<pre><code>#!/usr/bin/env bash
+
+set -euo pipefail
+
+CURL_OPTIONS=&quot;--max-time 5 --retry 3 --fail --silent --show-error&quot;
+SERVICE_URL=https://app.local/
+HEALTCHECK_URL=https://hc-ping.com/82583301-bd04-4028-9695-fc5473abc15d
+RESULT=&quot;&quot;
+
+on_exit() {
+    curl $CURL_OPTIONS --data-raw &quot;$RESULT&quot; &quot;${HEALTCHECK_URL}/${?}&quot; &gt;/dev/null
+}
+
+main () {
+    trap on_exit EXIT
+    RESULT=$(curl $CURL_OPTIONS &quot;$SERVICE_URL&quot; 2&gt;&amp;1 1&gt;/dev/null)
+}
+
+main &quot;$@&quot;
+</code></pre>
+<p>Now operator will be notified about possible outages and alert will include some
+context what exactly went wrong like:</p>
+<pre><code>curl: (7) Failed to connect to app.local port 443: Connection refused
+</code></pre>
+<h2>Service is available, but does it perform well?</h2>
+<p>While performance can be measured in many ways, we will focus on one simple
+metric: <em>response time</em>. <code>curl</code> can measure it out-of-the-box, but we will need
+to invoke it diffrently and format output message:</p>
+<pre><code># on_exit version supporting custom EXIT_CODE
+on_exit() {
+    local exit_code=$?
+    if [ -n &quot;$EXIT_CODE&quot; ]; then
+        exit_code=$EXIT_CODE
+    fi
+    curl $CURL_OPTIONS --data-raw &quot;$RESULT&quot; &quot;${HEALTCHECK_URL}/${exit_code}&quot; &gt;/dev/null
+    exit &quot;$exit_code&quot;
+}
+
+# Alert, if curl failed or response takes longer than 2 seconds
+CHECK_HTTP_TIMEOUT=2
+main () {
+    trap on_exit EXIT
+    RESULT=&quot;Response time: $(curl $CURL_OPTIONS &quot;$SERVICE_URL&quot; -o /dev/null --write-out '%{time_total}' 2&gt;&amp;1)&quot;
+    local time_total
+    time_total=$(echo &quot;$RESULT&quot; | rev | cut -d ' ' -f 1 | rev)
+    echo &quot;$time_total&quot;
+    if [ &quot;$(echo &quot;${time_total} &gt; ${CHECK_HTTP_TIMEOUT}&quot; | bc)&quot; -eq 1 ]; then
+        RESULT=&quot;${RESULT}&quot;$'\n'&quot;Too high response time!&quot;
+        EXIT_CODE=1
+    fi
+}
+</code></pre>
+<h2>What about other metrics?</h2>
+<p><em>Healthchecks</em> limits us to 10 kilobytes payload for each ping, but remember
+that we want to keep it simple, so it's not much of a problem. Rerranging our
+script into self-descriptive functions will be useful to include more checks:</p>
+<pre><code># Trigger alert when used memory exceeds 95%
+CHECK_MEMORY_THRESHOLD=95
+check_memory() {
+    RESULT=&quot;${RESULT}&quot;$'\n'&quot;Memory usage: $(exec 2&gt;&amp;1; free | grep Mem | awk '{print $3/$2 * 100.0}')&quot;
+    local used
+    used=$(echo &quot;$RESULT&quot; | tail -n 1 | rev | cut -d ' ' -f 1 | rev)
+    if [ &quot;$(echo &quot;${used} &gt; ${CHECK_MEMORY_THRESHOLD}&quot; | bc)&quot; -eq 1 ]; then
+        RESULT=&quot;${RESULT}&quot;$'\n'&quot;Too high memory usage!&quot;
+        EXIT_CODE=1
+    fi
+}
+
+main () {
+    trap on_exit EXIT
+    check_http
+    check_memory
+}
+</code></pre>
+<p>Observing SSL expiration date can be enclosed in single Bash function as well:</p>
+<pre><code>CHECK_SSL_DAYS=90
+check_ssl() {
+    local host
+    host=$(echo &quot;$SERVICE_URL&quot; | cut -d '/' -f 3)
+    RESULT=&quot;${RESULT}&quot;$'\n'&quot;SSL certificate expiration date: $(
+        exec 2&gt;&amp;1; echo |
+            openssl s_client -servername &quot;$host&quot; -connect &quot;${host}:443&quot; 2&gt;/dev/null |
+            openssl x509 -noout -enddate |
+            cut -d '=' -f 2
+    )&quot;
+    local end_seconds
+    end_seconds=$((&quot;$CHECK_SSL_DAYS&quot; * 24 * 60 * 60))
+    if ! echo |
+            openssl s_client -servername &quot;$host&quot; -connect &quot;${host}:443&quot; 2&gt;/dev/null |
+            openssl x509 -noout -checkend &quot;$end_seconds&quot; &gt;/dev/null; then
+        RESULT=&quot;${RESULT}&quot;$'\n'&quot;Certificate will expire soon!&quot;
+        EXIT_CODE=1
+    fi
+}
+</code></pre>
+<h1>Conclusion</h1>
+<p>It took us 72 lines of Bash to check:</p>
+<ul>
+<li>Service availability via HTTP</li>
+<li>Service response time</li>
+<li>Service SSL certificate expiration date</li>
+<li>Instance memory usage</li>
+</ul>
+<p>We can run this script every minute from cron:</p>
+<pre><code>* * * * * /opt/low-effort-monitoring.sh
+</code></pre>
+<p>Of course it's not the most beautiful and performance oriented way of monitoring
+website, but it serves the purpose. No special software nor planning is required
+here, so it may be a great adhoc solution while you plan long term monitoring
+system like Icinga2, Prometheus or Zabbix.</p>
+<p>Full script can be found <a href="/media/low-effort-monitoring.sh">here</a>.</p>
+
+	<!-- END BODY -->
+</body>
+</html>

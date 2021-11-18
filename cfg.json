@@ -2,6 +2,14 @@
 	"title": "Jakski's blog",
 	"pages": [
 		{
+			"title": "Low effort website monitoring",
+			"type": "post",
+			"date": "2021-11-18",
+			"template": "page-template.html",
+			"output": "pages/low-effort-website-monitoring.html",
+			"markdown": "posts/low-effort-website-monitoring.md"
+		},
+		{
 			"title": "Advanced curl usage",
 			"type": "post",
 			"date": "2019-05-26",
