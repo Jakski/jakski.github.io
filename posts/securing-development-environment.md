@@ -1,0 +1,130 @@
+Before I delve into details and requirements for secure development environment
+let me highlight some unsettling news provoking this post:
+
+- [https://www.bleepingcomputer.com/news/security/big-sabotage-famous-npm-package-deletes-files-to-protest-ukraine-war/](https://www.bleepingcomputer.com/news/security/big-sabotage-famous-npm-package-deletes-files-to-protest-ukraine-war/)
+- [https://blog.npmjs.org/post/180565383195/details-about-the-event-stream-incident](https://blog.npmjs.org/post/180565383195/details-about-the-event-stream-incident)
+- [https://www.reddit.com/r/Python/comments/8hvzja/backdoor_in_sshdecorator_package/](https://www.reddit.com/r/Python/comments/8hvzja/backdoor_in_sshdecorator_package/)
+
+All mentioned events have at least one thing in common: they abuse fundamental
+trust between software users and software maintainers/publishers. I know that
+these kind of attacks aren't new, but they become more and more viable in modern
+age when the most of code in projects is usually downloaded as a dependency
+provided by third-party. Also software development becomes more vibrant with new
+projects and releases occurring every day. As a developer you can of course pay
+attention to code you're using and lock dependencies in projects where possible,
+but no one has enough time to keep up with all changes in external modules and
+package managers. It's also especially hard to grasp when you're working on
+multiple projects or languages. There's always a chance that you will
+accidentally run malicious code masquerading as a dependency required by
+project. This risk can't be easily excluded in fast moving teams. Production
+ready infrastructure usually deploys strict security policies and provisions
+applications with access only to required resources. What about developer
+workstation? I rarely hear about anyone protecting themselves from project
+they're working on. More often people assume that whatever they get from
+internal repository can be trusted including it's dependencies.
+
+# Attack surface
+
+Let's consider some scenarios of attacks directed at developer workstations to
+get a glimpse of a problem.
+
+> I'm going to be intentionally paranoid here. In the end trust is always
+> required to push project forward. Yet I'll try to spot as many risks as
+> possible just, so we can focus on mitigating potential damage later on.
+
+## Malicious code in dependencies
+
+Probably the most obvious. We like to keep our projects updated, so we don't pin
+dependencies to certain versions. Instead we specify, that we want the latest
+version from some major release number. It's a quick win for getting new
+security updates, but at the same time we add a new crucial person to our
+project - maintainer. E.g. if maintainer's SSH key for repository gets
+compromised, then our project is also at risk.
+
+## Integrated development environments abuse
+
+I also mean all integrated development environments(IDEs) extensions and
+language servers. It's cool, if they just statically analyze projects without
+attempting to run their parts for validation. Problem appears when they're
+somehow tricked into running some third-party code or opening some security
+holes when working remotely. See some examples for yourself:
+
+- [Visual Studio Code](https://www.cvedetails.com/product/50646/Microsoft-Visual-Studio-Code.html?vendor_id=26)
+- [Intellij Idea](https://www.cvedetails.com/product/49160/Jetbrains-Intellij-Idea.html?vendor_id=15146)
+
+## Malicious code in IDE dependencies
+
+Running near real-time code analysis and providing sensible hints for developer
+isn't and easy task. That's why single extension can sometimes be a deciding
+factor for what IDE you're going to use and that's why a lot of vendors ship
+language-flavored versions of their products. Hinting developer is in fact, so
+complicated task that people more often tend to write specific background
+services independent from IDEs just to handle their favourite language. That's
+where [Language Server
+Protocol](https://microsoft.github.io/language-server-protocol/) shines.
+Language servers are usually, so complex that they have dependencies on their
+own. Everything can be ok with your project, but you can still be a victim
+because of malicious dependency in IDE.
+
+# What's to be protected
+
+Workstation of course. Whether it's our laptop or some remote desktop, we rarely
+run workstation with access to exactly one repository and nothing else. The most
+obvious target while attacking developers would be probably their SSH keys and
+browser data. Both of which usually allow to fully impersonate victim and
+publish changes on their behalf.
+
+Other projects. Having separate sandbox environment for all projects may not
+quite cut it. Malicious code in one project shouldn't result in overtaking them
+all. Think of it as of multi-tenancy problem. We have one environment consisting
+of our laptop and we need to run several development environments, isolating
+them from each other and protecting host. It's the similar scenario we see in
+virtualization and container orchestration platforms.
+
+# Possible approaches
+
+## Run with limited access
+
+Probably the most comfortable solution, but requires some work. The idea is to
+run IDE and applications as we would normally do, but assign them extra security
+policy. We don't isolate processes, but instead ensure that they don't peek
+into sensitive directories. It's comfortable, because we can reuse interpreters,
+compilers and tools installed on host operating system without any extra work.
+
+Example solutions:
+
+- AppArmor
+- SELinux
+- Firejail
+
+## Run in sandbox
+
+We will talk a lot about it in future posts. This approach assumes, that we
+don't trust a bit any of code and run it in entirely different environment from
+out host operating system. The biggest downside is of course that we need to
+somehow mirror our tools in order to use them.
+
+Example solutions:
+
+- Podman
+- Docker
+- LXC
+- QEMU(and libvirt)
+- systemd-nspawn
+
+## Run in remote environment
+
+Works similarly to sandboxing, but protects us from hardware vulnerabilities
+like processor exploits. Paying bill for cloud resources at the end of the month
+instead of provisioning locally sounds great, but keep in mind that running
+whole IDE with code on VM in shared hosting environment requires trusting
+hosting provider. Of course remote environment could also mean our old laptop
+sitting in house, but usually we need something more reliable than our home
+internet connection.
+
+Example solutions:
+
+- Practically any virtual private server provider
+- Owned hardware exposed via forwarded port on router
+
+# To be continued...
