@@ -2,6 +2,14 @@
 	"title": "Jakski's blog",
 	"pages": [
 		{
+			"title": "Securing development environment",
+			"type": "post",
+			"date": "2022-04-04",
+			"template": "page-template.html",
+			"output": "pages/securing-development-environment.html",
+			"markdown": "posts/securing-development-environment.md"
+		},
+		{
 			"title": "Low effort website monitoring",
 			"type": "post",
 			"date": "2021-11-18",
