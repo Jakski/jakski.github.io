@@ -2,6 +2,14 @@
 	"title": "Jakski's blog",
 	"pages": [
 		{
+			"title": "Combining variables in Ansible",
+			"type": "post",
+			"date": "2022-05-25",
+			"template": "page-template.html",
+			"output": "pages/combining-variables-in-ansible.html",
+			"markdown": "posts/combining-variables-in-ansible.md"
+		},
+		{
 			"title": "Securing development environment",
 			"type": "post",
 			"date": "2022-04-04",

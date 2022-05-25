@@ -95,7 +95,6 @@ Example solutions:
 
 - AppArmor
 - SELinux
-- Firejail
 
 ## Run in sandbox
 
@@ -111,6 +110,8 @@ Example solutions:
 - LXC
 - QEMU(and libvirt)
 - systemd-nspawn
+- Firejail
+- seccomp
 
 ## Run in remote environment
 
