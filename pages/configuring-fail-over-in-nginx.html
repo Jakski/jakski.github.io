@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>Configuring fail-over in Nginx</title>
+	<link href="/style.css" rel="stylesheet">
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+</head>
+<body>
+	<h1 id="title">
+		<a href="/">
+			Jakski's blog
+		</a>
+	</h1>
+	<!-- START BODY -->
+	<header>
+		<h1 id="post-title">Configuring fail-over in Nginx</h1>
+		<time id="post-date" datetime="2022-06-30">
+			2022-06-30
+		</time>
+	</header>
+	<p>What it means that a web server provides fail-over? It's usually understood as a
+warranty that service will continue working even, if one of many instances stops
+functioning correctly. Ideally client shouldn't even notice that some instance
+ceased to serve requests. I'm going to walk you through configuring fail-over in
+Nginx and explain some useful features. Our stack will be:</p>
+<ul>
+<li>Two instances of mock HTTP web services written in Python</li>
+<li>Nginx 1.23.0</li>
+</ul>
+<h1>Web service</h1>
+<p>First let's mock HTTP application with:</p>
+<pre><code class="language-python">#!/usr/bin/env python3
+
+import os
+from http.server import BaseHTTPRequestHandler
+from socketserver import TCPServer
+
+
+class WebService(BaseHTTPRequestHandler):
+
+    def do_GET(self):
+        self.send_response(int(os.environ.get(&quot;GET_CODE&quot;, 200)))
+        self.end_headers()
+        self.wfile.write(b&quot;Lorem Ipsum\n&quot;)
+
+    def do_POST(self):
+        self.send_response(int(os.environ.get(&quot;POST_CODE&quot;, 200)))
+        self.end_headers()
+        self.wfile.write(b&quot;Lorem Ipsum\n&quot;)
+
+
+if __name__ == &quot;__main__&quot;:
+    port = int(os.environ[&quot;PORT&quot;])
+    with TCPServer((&quot;0.0.0.0&quot;, port), WebService) as httpd:
+        print(f&quot;Serving at port: {port}&quot;)
+        httpd.serve_forever()
+</code></pre>
+<p>We will run 2 instances of this script on ports 8081 and 8082.</p>
+<h1>Simple upstream configuration</h1>
+<p>Our first setup will consist of simple upstream without any tunings.</p>
+<pre><code>upstream webserver {
+  server 127.0.0.1:8081;
+  server 127.0.0.1:8082;
+}
+
+server {
+  listen 80;
+  server_name localhost default_server;
+  location / {
+    proxy_pass http://webserver;
+  }
+}
+</code></pre>
+<h2>What guarantees do we have?</h2>
+<p>Unhealthy state means different things for different applications. By default
+Nginx will serve 50x responses to users and treat them as healthy behaviour.</p>
+<pre><code># Instance 1
+$ PORT=8081 GET_CODE=500 /webserver.py
+# Instance 2
+$ PORT=8082 GET_CODE=500 /webserver.py
+# Attempt to query in separate terminal
+$ curl -sSiLX GET http://localhost
+HTTP/1.1 500 Internal Server Error
+Server: nginx/1.23.0
+Date: Thu, 30 Jun 2022 17:08:24 GMT
+Transfer-Encoding: chunked
+Connection: keep-alive
+
+Lorem Ipsum
+</code></pre>
+<p>Note that <code>Lorem Ipsum</code> came in response, meaning that Nginx actually passed our
+request to backends and returned response. If we stop one of our instances and
+query service again we will see in Nginx log entries like:</p>
+<pre><code>2022/06/30 17:11:53 [error] 175#175: *64 connect() failed (111: Connection refused) while connecting to upstream, client: 127.0.0.1, server: localhost, request: &quot;GET / HTTP/1.1&quot;, upstream: &quot;http://127.0.0.1:8082/&quot;, host: &quot;localhost&quot;
+2022/06/30 17:11:53 [warn] 175#175: *64 upstream server temporarily disabled while connecting to upstream, client: 127.0.0.1, server: localhost, request: &quot;GET / HTTP/1.1&quot;, upstream: &quot;http://127.0.0.1:8082/&quot;, host: &quot;localhost&quot;
+127.0.0.1 - - [30/Jun/2022:17:11:53 +0000] &quot;GET / HTTP/1.1&quot; 500 22 &quot;-&quot; &quot;curl/7.83.1&quot; &quot;-&quot;
+</code></pre>
+<p>Nginx gracefully handled outage and served client request without any issue. The
+only way to effectively crash application is to take down all application
+servers:</p>
+<pre><code># On client side
+$ curl -sSiLX POST http://localhost
+HTTP/1.1 502 Bad Gateway
+Server: nginx/1.23.0
+Date: Thu, 30 Jun 2022 17:16:19 GMT
+Content-Type: text/html
+Content-Length: 157
+Connection: keep-alive
+
+&lt;html&gt;
+&lt;head&gt;&lt;title&gt;502 Bad Gateway&lt;/title&gt;&lt;/head&gt;
+&lt;body&gt;
+&lt;center&gt;&lt;h1&gt;502 Bad Gateway&lt;/h1&gt;&lt;/center&gt;
+&lt;hr&gt;&lt;center&gt;nginx/1.23.0&lt;/center&gt;
+&lt;/body&gt;
+&lt;/html&gt;
+
+# In Nginx log
+2022/06/30 17:17:00 [error] 175#175: *3166 no live upstreams while connecting to upstream, client: 127.0.0.1, server: localhost, request: &quot;POST / HTTP/1.1&quot;, upstream: &quot;http://webserver/&quot;, host: &quot;localhost&quot;
+127.0.0.1 - - [30/Jun/2022:17:17:00 +0000] &quot;POST / HTTP/1.1&quot; 502 157 &quot;-&quot; &quot;curl/7.83.1&quot; &quot;-&quot;
+</code></pre>
+<h1>Getting rid of 50x errors</h1>
+<p>What, if our application server communicate with some external resources like
+databases and only one instance can't reach them properly? Or let's assume that
+the latest deployment of our application wasn't successful and one instance
+constantly returns 50x response codes.</p>
+<p>Nginx allows us to decide what it means that backend is unhealthy. In previous
+example it was response code agnostic, but we can change that with
+<code>proxy_next_upstream</code> directive like so:</p>
+<pre><code>server {
+  listen 80;
+  server_name localhost default_server;
+  location / {
+    proxy_next_upstream error timeout http_500 http_502 http_503 http_504;
+    proxy_pass http://webserver;
+  }
+}
+</code></pre>
+<p>Let's start our application servers in the following setup:</p>
+<pre><code># Instance 1
+$ PORT=8081 /webserver.py
+# Instance 2
+$ PORT=8082 GET_CODE=500 POST_CODE=500 /webserver.py
+</code></pre>
+<p>Now 50x errors will be handles gracefully and reported in logs:</p>
+<pre><code>2022/06/30 20:20:34 [warn] 1767#1767: *3198 upstream server temporarily disabled while reading response header from upstream, client: 127.0.0.1, server: localhost, request: &quot;GET / HTTP/1.1&quot;, upstream: &quot;http://127.0.0.1:8082/&quot;, host: &quot;localhost&quot;
+127.0.0.1 - - [30/Jun/2022:20:20:34 +0000] &quot;GET / HTTP/1.1&quot; 200 22 &quot;-&quot; &quot;curl/7.83.1&quot; &quot;-&quot;
+</code></pre>
+<p>There's only one exception to this protection: non-idempotent HTTP methods.
+By design they're introducing changes and repeating them might have unwanted
+consequences. By default they will be still returned, no matter what response
+code gets back. This behaviour can be changed with <code>non_idempotent</code> parameter
+in <code>proxy_next_upstream</code> directive, but keep in mind that repeating requests
+like POST and PATCH might result in unexpected problems. For example, if user is
+creating a new entry on forum with POST, then repeating this request might
+create 2 same entries. This behaviour will be surely confusing. Even when Nginx
+marks backend as unhealthy, it still tries to pass new request in some
+intervals. Solely detecting unhealthy instance and performing fail-over doesn't
+solve issue.</p>
+<blockquote>
+<p>If you're using <code>upstream</code>, it might be worth tuning
+<code>proxy_next_upstream_tries</code> as well. Otherwise bad requests might end up
+bouncing from backend to backend, causing tremendous load on your
+infrastructure.</p>
+</blockquote>
+<h1>Unfinished HTTP response</h1>
+<p>Nginx configuration is resetted to our first example without
+<code>proxy_next_upstream</code> customization. This time the second application instance
+will be actually <code>netcat</code> TCP server:</p>
+<pre><code># Instance 1
+$ PORT=8081 /webserver.py
+# Instance 2
+$ nc -lp 8082
+</code></pre>
+<p>It's as easy as pressing <code>CTRL + C</code> in terminal to finish TCP connection in
+<code>netcat</code>.</p>
+<pre><code># netcat output
+$ nc -lp 8082
+GET / HTTP/1.0
+Host: webserver
+Connection: close
+User-Agent: curl/7.83.1
+Accept: */*
+
+^Cpunt!
+
+# Nginx log
+2022/06/30 20:43:35 [warn] 1839#1839: *3265 upstream server temporarily disabled while reading response header from upstream, client: 127.0.0.1, server: localhost, request: &quot;GET / HTTP/1.1&quot;, upstream: &quot;http://127.0.0.1:8082/&quot;, host: &quot;localhost&quot;
+127.0.0.1 - - [30/Jun/2022:20:43:35 +0000] &quot;GET / HTTP/1.1&quot; 200 22 &quot;-&quot; &quot;curl/7.83.1&quot; &quot;-&quot;
+
+# curl output
+$ curl -sSiLX GET http://localhost
+HTTP/1.1 200 OK
+Server: nginx/1.23.0
+Date: Thu, 30 Jun 2022 20:43:35 GMT
+Transfer-Encoding: chunked
+Connection: keep-alive
+
+Lorem Ipsum
+</code></pre>
+<p>OK, Nginx handled that perfectly. Client had no idea that some backend just
+disappeared while serving request. I also tried to send partial response, but
+the result was the same. Yet I've found one case where Nginx won't use next
+upstream:</p>
+<pre><code># curl output
+$ curl -sSiLX GET http://localhost
+curl: (1) Received HTTP/0.9 when not allowed
+
+# netcat output
+$ nc -lp 8082
+GET / HTTP/1.0
+Host: webserver
+Connection: close
+User-Agent: curl/7.83.1
+Accept: */*
+
+malformed-response
+
+# Nginx logs
+2022/06/30 20:53:14 [error] 1840#1840: *3306 upstream sent no valid HTTP/1.0 header while reading response header from upstream, client: 127.0.0.1, server: localhost, request: &quot;GET / HTTP/1.1&quot;, upstream: &quot;http://127.0.0.1:8082/&quot;, host: &quot;localhost&quot;
+127.0.0.1 - - [30/Jun/2022:20:53:15 +0000] &quot;GET / HTTP/1.1&quot; 009 19 &quot;-&quot; &quot;curl/7.83.1&quot; &quot;-&quot;
+</code></pre>
+<p>It's extremely rare case, because application server has to make errors in HTTP
+protocol for this to happen. These days HTTP is usually handled on framework
+level, so developers are protected from making such errors in business logic
+code.</p>
+
+	<!-- END BODY -->
+</body>
+</html>

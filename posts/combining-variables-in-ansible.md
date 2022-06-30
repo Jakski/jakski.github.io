@@ -106,7 +106,7 @@ can be written like so:
 {% macro merge_list(pattern) -%}
   {% set ns = namespace(output=[]) -%}
   {% for name in lookup('varnames', pattern).split(',') -%}
-    {% set ns.output = ns.output | union(hostvars[inventory_hostname][name]) -%}
+    {% set ns.output = ns.output | union(lookup('vars', name)) -%}
   {% endfor -%}
   {{ ns.output }}
 {% endmacro -%}
@@ -114,7 +114,7 @@ can be written like so:
 {% macro merge_dict(pattern, recursive=True) -%}
   {% set ns = namespace(output={}) -%}
   {% for name in lookup('varnames', pattern).split(',') -%}
-    {% set ns.output = ns.output | combine(hostvars[inventory_hostname][name], recursive=recursive) -%}
+    {% set ns.output = ns.output | combine(lookup('vars', name), recursive=recursive) -%}
   {% endfor -%}
   {{ ns.output }}
 {% endmacro -%}

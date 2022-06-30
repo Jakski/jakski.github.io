@@ -2,6 +2,14 @@
 	"title": "Jakski's blog",
 	"pages": [
 		{
+			"title": "Configuring fail-over in Nginx",
+			"type": "post",
+			"date": "2022-06-30",
+			"template": "page-template.html",
+			"output": "pages/configuring-fail-over-in-nginx.html",
+			"markdown": "posts/configuring-fail-over-in-nginx.md"
+		},
+		{
 			"title": "Combining variables in Ansible",
 			"type": "post",
 			"date": "2022-05-25",
