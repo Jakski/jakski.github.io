@@ -2,6 +2,14 @@
 	"title": "Jakski's blog",
 	"pages": [
 		{
+			"title": "Virtual machine as a development environment",
+			"type": "post",
+			"date": "2022-08-27",
+			"template": "page-template.html",
+			"output": "pages/devbox-vm.html",
+			"markdown": "posts/devbox-vm.md"
+		},
+		{
 			"title": "Configuring fail-over in Nginx",
 			"type": "post",
 			"date": "2022-06-30",
