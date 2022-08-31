@@ -191,7 +191,7 @@ away. Automatic mounting can be configured with cloud-init like this:</p>
 <pre><code class="language-yaml">mounts:
   - [code, /mnt, 9p, trans=virtio, &quot;0&quot;, &quot;0&quot;]
 </code></pre>
-<h1>Optimizations</h1>
+<h1>Improvements</h1>
 <h2>CPU acceleration</h2>
 <p>If you try to recreate this setup, you've probably noticed that virtual machine
 literally burns your CPU. Using virtualization processor extensions like VTx is
@@ -306,6 +306,32 @@ crucial to ensure that only selected user can attach interfaces to our bridge.</
   -drive driver=raw,file=seed.iso,if=virtio \
   -fsdev local,id=code0,path=&quot;$(realpath .)&quot;,security_model=mapped-xattr \
   -device virtio-9p-pci,fsdev=code0,mount_tag=code
+</code></pre>
+<h2>Protecting local networks</h2>
+<p>Original firewall rules allow virtual machine to mess with private networks like
+VPNs. You may consider hardening firewall further by adding:</p>
+<pre><code>define PRIVATE_IPV4 = {
+  10.0.0.0/8,
+  172.16.0.0/12,
+  192.168.0.0/16,
+  169.254.0.0/16
+}
+define PRIVATE_IPV6 = {
+  fd00::/8,
+  fe80::/10,
+  fc00::/7
+}
+table inet filter {
+  chain br0_prerouting {
+    type filter hook prerouting priority 0
+    iifname != br0 return
+    fib daddr . iif type local return
+    ip daddr $PRIVATE_IPV4 drop
+    ip6 daddr $PRIVATE_IPV6 drop
+  }
+
+  ...other rules...
+}
 </code></pre>
 <h2>virtio-fs</h2>
 <p>TODO</p>

@@ -201,7 +201,7 @@ mounts:
   - [code, /mnt, 9p, trans=virtio, "0", "0"]
 ```
 
-# Optimizations
+# Improvements
 
 ## CPU acceleration
 
@@ -347,6 +347,36 @@ kvm \
   -drive driver=raw,file=seed.iso,if=virtio \
   -fsdev local,id=code0,path="$(realpath .)",security_model=mapped-xattr \
   -device virtio-9p-pci,fsdev=code0,mount_tag=code
+```
+
+## Protecting local networks
+
+Original firewall rules allow virtual machine to mess with private networks like
+VPNs. You may consider hardening firewall further by adding:
+
+```
+define PRIVATE_IPV4 = {
+  10.0.0.0/8,
+  172.16.0.0/12,
+  192.168.0.0/16,
+  169.254.0.0/16
+}
+define PRIVATE_IPV6 = {
+  fd00::/8,
+  fe80::/10,
+  fc00::/7
+}
+table inet filter {
+  chain br0_prerouting {
+    type filter hook prerouting priority 0
+    iifname != br0 return
+    fib daddr . iif type local return
+    ip daddr $PRIVATE_IPV4 drop
+    ip6 daddr $PRIVATE_IPV6 drop
+  }
+
+  ...other rules...
+}
 ```
 
 ## virtio-fs
