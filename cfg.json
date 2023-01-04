@@ -2,6 +2,14 @@
 	"title": "Jakski's blog",
 	"pages": [
 		{
+			"title": "Error handling in Bash",
+			"type": "post",
+			"date": "2023-01-03",
+			"template": "page-template.html",
+			"output": "pages/error-handling-in-bash.html",
+			"markdown": "posts/error-handling-in-bash.md"
+		},
+		{
 			"title": "Virtual machine as a development environment",
 			"type": "post",
 			"date": "2022-08-27",

@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>Error handling in Bash</title>
+	<link href="/style.css" rel="stylesheet">
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+</head>
+<body>
+	<h1 id="title">
+		<a href="/">
+			Jakski's blog
+		</a>
+	</h1>
+	<!-- START BODY -->
+	<header>
+		<h1 id="post-title">Error handling in Bash</h1>
+		<time id="post-date" datetime="2023-01-03">
+			2023-01-03
+		</time>
+	</header>
+	<p>Undesired behaviour - an error, can manifest in various ways. In most high-level
+programming languages errors are represented as dedicated objects, allowing to
+handle them without interrupting program execution. They usually require
+developer to explicitly mark bad program flows by throwing or raising problem
+description. Bash don't provide any special syntax for this. Instead it allows
+to hook custom actions when non-zero exit code from command occurs. It's not
+universally treated as an error, since some applications use more than one exit
+code to signal success. Yet Bash contains some builtin commands and options named
+after <u>error</u> for handling such cases.</p>
+<h1>Unofficial strict mode</h1>
+<p>So called <u>unofficial strict mode</u> consist of the following options:</p>
+<pre><code>set -o errexit
+set -o nounset
+set -o pipefail
+</code></pre>
+<p>and is usually shortened to <code>set -euo pipefail</code>. It's probably the easiest for
+starter, but it doesn't provide much information about error when it actually
+happens.</p>
+<blockquote>
+<p><strong>NOTE</strong>: Even with above flags Bash will ignore some problems like non-zero
+exit code from subshell invoked in builtin command invocation. It's the best
+to always check scripts additionally with tools like
+<a href="https://www.shellcheck.net/">Shellcheck</a> and review <a href="https://mywiki.wooledge.org/BashPitfalls">Bash Pitfalls
+wiki</a>.</p>
+</blockquote>
+<h1>Using traps</h1>
+<p>When everything else fails, script can be always launched with <code>bash -x</code> or <code>set -o xtrace</code>, but it can be overkill for bigger solutions and might reveal
+confidential data from variables. Another approach requires to define trap
+functions. They act as hooks and run only on POSIX signals or when some specific
+condition is met. See example with <code>ERR</code> trap signal below:</p>
+<pre><code class="language-shell">#!/usr/bin/env bash
+
+set -euo pipefail
+
+on_error() {
+    declare exit_code=$?
+    echo &quot;Something went wrong!&quot; &gt;&amp;2
+    exit &quot;$exit_code&quot;
+}
+
+trap on_error ERR
+
+ls /nonexistent
+</code></pre>
+<p>Upon execution it prints:</p>
+<pre><code>ls: cannot access '/nonexistent': No such file or directory
+Something went wrong!
+</code></pre>
+<p><code>ls</code> might not be the best example here, since it describes what went wrong by
+itself, but imagine checking for TCP port availability with OpenBSD <code>netcat</code>:</p>
+<pre><code># ...
+
+nc -zw 3 127.0.0.1 22
+</code></pre>
+<p>We wouldn't know that there was error, unless we printed last exit code <code>echo $?</code>. With <code>ERR</code> trap useful message appears without any further interaction and
+program stops, if we also use <code>errexit</code>.</p>
+<p>There's edge case in above solution when we use functions. They don't inherit
+<code>ERR</code> trap, unless we use <code>errtrace</code> option. Now strict mode looks like this
+<code>set -eEuo pipefail</code>.</p>
+<p>It's usually enough for small scripts, but we have to guess why program
+stopped, if error can appear in multiple places. <code>BASH_COMMAND</code> can be used to
+show exactly which command caused script to fail:</p>
+<pre><code>#!/usr/bin/env bash
+
+set -eEuo pipefail
+
+on_error() {
+    declare \
+        cmd=$BASH_COMMAND \
+        exit_code=$?
+    echo &quot;Failing with exit code ${exit_code} at ${*} in command: ${cmd}&quot; &gt;&amp;2
+    exit &quot;$exit_code&quot;
+}
+
+trap on_error ERR
+
+function_a() {
+    nc -zw 3 127.0.0.1 22
+}
+
+function_b() {
+    function_a
+}
+
+function_b
+</code></pre>
+<p>It save us some time when error occurs without <code>xtrace</code>:</p>
+<pre><code>Failing with exit code 1 at  in command: nc -zw 3 127.0.0.1 22
+</code></pre>
+<h1>Printing call traces</h1>
+<p>Additionally Bash provides some diagnostic variables defined as arrays, which
+can be used to locate where error happened:</p>
+<ul>
+<li><code>BASH_SOURCE</code> - Source file of currently executed function. It's not always
+available, since scripts can be sourced from arbitrary file descriptors.</li>
+<li><code>FUNCNAME</code> - Currently executed function name.</li>
+<li><code>BASH_LINENO</code> - Line number from source file.</li>
+</ul>
+<p>They can be iterated to generate a call trace:</p>
+<pre><code class="language-shell">#!/usr/bin/env bash
+
+set -eEuo pipefail
+
+on_error() {
+    declare \
+        cmd=$BASH_COMMAND \
+        exit_code=$? \
+        i=0 \
+        end=&quot;${#FUNCNAME[@]}&quot; \
+        next
+    end=$((end - 1))
+    echo &quot;Failing with exit code ${exit_code} in command: ${cmd}&quot; &gt;&amp;2
+    while [ &quot;$i&quot; != &quot;$end&quot; ]; do
+        next=$((i + 1))
+        echo &quot;	${BASH_SOURCE[&quot;$next&quot;]:-}:${BASH_LINENO[&quot;$i&quot;]}:${FUNCNAME[&quot;$next&quot;]}&quot; &gt;&amp;2
+        i=$next
+    done
+    exit &quot;$exit_code&quot;
+}
+
+trap on_error ERR
+# Source wrapped_ls function
+source ./t2.sh
+
+function_a() {
+    nc -zw 3 127.0.0.1 22
+}
+
+function_b() {
+    wrapped_ls /asdf
+}
+
+function_b
+</code></pre>
+<p>Running prints:</p>
+<pre><code>$ ./t.sh
+ls: cannot access '/asdf': No such file or directory
+Failing with exit code 2 in command: ls &quot;$1&quot;
+  ./t2.sh:2:wrapped_ls
+  ./t.sh:31:function_b
+  ./t.sh:34:main
+</code></pre>
+<p>There's one problem with this approach. Bash allows to throw custom error
+message, when variable is null or not set with syntax <code>${varname:?&quot;message&quot;}</code>.
+It does end program, but it doesn't trigger <code>ERR</code> trap. To handle this properly
+we need to replace <code>ERR</code> trap with <code>EXIT</code>. It runs unconditionally when script
+ends, so exit code needs to be additionally checked. We no longer need
+<code>errtrace</code>(<code>-E</code>) option in this case.</p>
+<pre><code class="language-shell">#!/usr/bin/env bash
+
+set -euo pipefail
+
+on_exit() {
+    declare \
+        cmd=$BASH_COMMAND \
+        exit_code=$? \
+        i=0 \
+        end=&quot;${#FUNCNAME[@]}&quot; \
+        next
+    if [ &quot;$exit_code&quot; = 0 ]; then
+        return 0
+    fi
+    end=$((end - 1))
+    echo &quot;Failing with exit code ${exit_code} in command: ${cmd}&quot; &gt;&amp;2
+    while [ &quot;$i&quot; != &quot;$end&quot; ]; do
+        next=$((i + 1))
+        echo &quot;	${BASH_SOURCE[&quot;$next&quot;]:-}:${BASH_LINENO[&quot;$i&quot;]}:${FUNCNAME[&quot;$next&quot;]}&quot; &gt;&amp;2
+        i=$next
+    done
+    exit &quot;$exit_code&quot;
+}
+
+trap on_exit EXIT
+# Source wrapped_ls function
+source ./t2.sh
+
+function_a() {
+    nc -zw 3 127.0.0.1 22
+}
+
+function_b() {
+    # Force exit with undefined variable.
+    : &quot;${dgfdfg:?}&quot;
+    wrapped_ls /asdf
+}
+
+function_b
+</code></pre>
+<h1>Handling non-zero exit codes</h1>
+<p>It's usually not the issue, since commands used in conditionals are excluded
+from <code>errexit</code> and <code>ERR</code> trap. Difficult cases are when we want to use functions
+or pipe commands.</p>
+<h2>In functions</h2>
+<p>It's tempting to use function directly in conditional. Both full syntax and
+<code>&amp;&amp;</code>/<code>||</code> turn off <code>errexit</code> and <code>ERR</code> trap. They turn them off <em>globally</em>! It
+means that even nested function calls won't properly terminate on error. This is
+almost never a desired behaviour, so instead we have to wrap function call in
+subshell. It's highly suboptimal solution, since a new process gets spawned, but
+it's still better than not handling errors at all.</p>
+<pre><code class="language-shell">#!/usr/bin/env bash
+
+set -euo pipefail
+
+on_exit() {
+    # ...
+}
+
+trap on_exit EXIT
+
+get_exit_code() {
+    set +e
+    (
+        set -e
+        &quot;$@&quot;
+    )
+    echo &quot;$?&quot;
+    set -e
+}
+
+function_a() {
+    nc -zw 1 127.0.0.1 80
+    return 0
+}
+
+function_b() {
+    function_a
+    return 0
+}
+
+if function_b; then
+    echo &quot;Expected non-zero!&quot;
+fi
+
+declare i
+i=$(get_exit_code function_b)
+if [ &quot;$i&quot; = 0 ]; then
+    echo &quot;Expected non-zero, but got: ${i}&quot;
+fi
+</code></pre>
+<p>Running gives:</p>
+<pre><code>$ bash t.sh
+Expected non-zero!
+</code></pre>
+<p>assuming port 80 is not listening.</p>
+<h2>In pipelines</h2>
+<p>One way to handle non-standard error codes in pipelines is to wrap invocations
+in functions and use builtin <code>return</code> to signal actual error. Defining a new
+function can be skipped, if command list is used with syntax <code>{ }</code> or if short
+conditional is used.</p>
+<pre><code class="language-shell"># ...
+
+nc -zw 1 127.0.0.1 80 || [ &quot;$?&quot; = 1 ] \
+    | cat
+
+{
+    declare i=0
+    nc -zw 1 127.0.0.1 80 || i=$?
+    echo &quot;Returned ${i}&quot;
+    if [ &quot;$i&quot; != 1 ]; then
+        exit 1
+    fi
+} \
+    | cat
+</code></pre>
+<p>Running above gives:</p>
+<pre><code># bash t.sh
+Returned 1
+</code></pre>
+
+	<!-- END BODY -->
+</body>
+</html>
