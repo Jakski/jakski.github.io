@@ -2,6 +2,14 @@
 	"title": "Jakski's blog",
 	"pages": [
 		{
+			"title": "Comparing JSON documents",
+			"type": "post",
+			"date": "2023-09-02",
+			"template": "page-template.html",
+			"output": "pages/json-delta.html",
+			"markdown": "posts/json-delta.md"
+		},
+		{
 			"title": "Error handling in Bash",
 			"type": "post",
 			"date": "2023-01-03",
