@@ -1,0 +1,223 @@
+If you have programmed in Bash more than once, then you probably know the idiom
+of assigning a command result to a variable:
+
+```
+output=$(some_command)
+```
+
+What you're most likely aware is that this creates a subshell, which is spawned
+as a separate process. If you plan to invoke an external program, then there's
+no workaround for this. With functions this is the most straightforward, but
+not the fastest(runtime) way to get a result. Consider the following example:
+
+```
+fn() {
+	echo "result"
+}
+
+echo "Invoked in subshell"
+time (for i in {1..10000}; do (fn) >/dev/null; done)
+echo
+echo "Invoked directly"
+time (for i in {1..10000}; do fn >/dev/null; done)
+```
+
+```
+Invoked in subshell
+
+real    0m9.619s
+user    0m6.325s
+sys     0m3.594s
+
+Invoked directly
+
+real    0m0.243s
+user    0m0.162s
+sys     0m0.079s
+```
+
+In 10 thousand loops we've got over 9 seconds of difference. I've immediately
+discarded results of `fn()`, but in real life we would typically want to save it
+in some variable. For most scripts even such a long execution time will be
+acceptable, but in rare cases you'll wonder how to postpone using another
+language by optimizing a current solution. Let's talkover a few methods for
+doing that.
+
+# Predefined variable for passing a results
+
+```
+declare RESULT
+
+fn() {
+	RESULT="result"
+}
+
+declare accumulator=""
+time (for i in {1..10000}; do fn; accumulator+="$RESULT"; done)
+```
+
+```
+real    0m0.059s
+user    0m0.059s
+sys     0m0.000s
+```
+
+With only a few changes we've gained a tremendous performance boost. So what's
+the catch? Our function now modifies a variable from outer scope. If you control
+the calling environment, then this is fine. Problem appears when `RESULT` is
+already used for something else in outer scope. Now usage of this additional
+variable becomes a part of our function interface and all callers must be aware
+of this. If you or your colleague forget about it, then you might end up
+spending a lot of time, debugging what went wrong.
+
+# Pipelines
+
+If you need to call some function repeatedly, then it might be worth to move the
+loop into a function itself. If you still need to process results one-by-one,
+then you can run it in pipeline.
+
+```
+fn() {
+	declare counter=$1
+	while [ "$counter" != 0 ]; do
+		echo "result"
+		counter=$((counter - 1))
+	done
+}
+
+declare line
+time (fn 10000 | while IFS="" read -r line; do echo "$line" >/dev/null; done)
+```
+
+```
+real    0m0.309s
+user    0m0.264s
+sys     0m0.136s
+```
+
+Last process in pipe is still executed in subshell. It's still way more optimal
+than running 10 thousand subshells, but also prevents you from accessing
+variables in caller's scope. You skip this limitation by using `lastpipe` shell
+option.
+
+# Indirection with namerefs
+
+Bash allows you to reference a variable by value stored in other variable. It
+works like a pointer. One way to achieve that is by using a namerefs.
+
+```
+fn() {
+	declare -n dest=$1
+	dest+="result"
+}
+
+time (declare result=""; for i in {1..10000}; do fn result; done)
+```
+
+```
+real    0m0.076s
+user    0m0.076s
+sys     0m0.000s
+```
+
+The problem with namerefs is that they occupy a scope with yet another variable
+name.
+
+```
+fn() {
+	declare -n dest=$1
+	declare result="result"
+	dest+="$result"
+}
+
+time (declare result=""; for i in {1..2}; do fn result; done; echo "$result")
+```
+
+You would expect `result` variable to contain `resultresult`, right? Well,
+that's not Bash will handle this situation. As far as I understand this is an
+undefined behaviour, but on my system `result` variable ended up being empty.
+This means that namerefs impose a similar limitation as a solution with
+predefined variable. Caller still needs to be aware what name is reserved.
+
+# Indirection with eval
+
+`eval` builtin can be very dangerous, so always think twice before using it. If
+arguments are not sanitized, then it can easily lead to malicious code
+injection. Having this in mind Bash provides 2 ways to avoid unsolicited word
+splitting or expansion:
+
+- `printf "%q"` - builtin allowing to output shell-escaped values
+- `${var@Q}` - parameter expansion using a `Q` transformation
+
+Both of them help us ensure that argument we pass are actually treated as a
+single argument with proper quotting and escaping. Let's say that now our
+function needs to add some provided argument to result.
+
+```
+fn() {
+	eval "${1}+=${2}"
+}
+
+time (declare result=""; for i in {1..2}; do fn result "a; echo hacked"; done; echo "$result")
+```
+
+```
+hacked
+hacked
+aa
+
+real    0m0.000s
+user    0m0.000s
+sys     0m0.000s
+```
+
+See the 2 lines `hacked`? This is the proof that we manage to inject arbitrary
+code into function. That's usually not what we want, so let's fix it with
+transformation.
+
+```
+fn() {
+	eval "${1}+=${2@Q}"
+}
+
+time (declare result=""; for i in {1..2}; do fn result "a; echo hacked"; done; echo "$result")
+```
+
+```
+a; echo hackeda; echo hacked
+
+real    0m0.000s
+user    0m0.000s
+sys     0m0.000s
+```
+
+Now we're relatively safe.
+
+## (Ab)using positional parameters
+
+You may have noticed that this method still doesn't allow us to use our own
+variables, since there may be a collission with `$1` passed from the caller.
+We aren't safe to declare our own variable, so the only variables local to our
+function are positional parameters. You can change them using `set -- arg1 arg2`
+shell builtin. This method makes your code very unreadable, but sometimes choice
+is an absent luxury. Let's say that for some reason you need to backquote square
+brackets and uppercase an argument to function.
+
+```
+fn() {
+	set -- "$1" "${2//\]/\\]}"
+	set -- "$1" "${2//\[/\\[}"
+	set -- "$1" "${2^^}"
+	eval "${1}+=${2@Q}"
+}
+
+time (declare result=""; for i in {1..2}; do fn result "[value]"; done; echo "$result")
+```
+
+```
+\[VALUE\]\[VALUE\]
+
+real    0m0.001s
+user    0m0.001s
+sys     0m0.000s
+```

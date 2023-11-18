@@ -2,6 +2,14 @@
 	"title": "Jakski's blog",
 	"pages": [
 		{
+			"title": "Returning value from Bash functions efficiently",
+			"type": "post",
+			"date": "2023-11-18",
+			"template": "page-template.html",
+			"output": "pages/bash-efficient-return.html",
+			"markdown": "posts/bash-efficient-return.md"
+		},
+		{
 			"title": "Comparing JSON documents",
 			"type": "post",
 			"date": "2023-09-02",
