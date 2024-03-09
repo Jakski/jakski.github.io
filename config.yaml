@@ -1,0 +1,48 @@
+---
+outputDir: .
+posts:
+  bash-efficient-return:
+    title: Returning value from Bash functions efficiently
+    date: 2024-03-05
+  json-delta:
+    title: Comparing JSON documents
+    date: 2023-09-02
+  error-handling-in-bash:
+    title: Error handling in Bash
+    date: 2023-01-03
+  devbox-vm:
+    title: Virtual machine as a development environment
+    date: 2022-08-27
+  configuring-fail-over-in-nginx:
+    title: Configuring fail-over in Nginx
+    date: 2022-06-30
+  combining-variables-in-ansible:
+    title: Combining variables in Ansible
+    date: 2022-05-25
+  securing-development-environment:
+    title: Securing development environment
+    date: 2022-04-04
+  low-effort-website-monitoring:
+    title: Low effort website monitoring
+    date: 2021-11-18
+  advanced-curl-usage:
+    title: Advanced curl usage
+    date: 2019-05-26
+  neovim-channel-doesnt-exist-error:
+    title: "Neovim error: Channel doesn't exist"
+    date: 2019-02-09
+  debugging-golang-in-kubernetes:
+    title: Debugging Go in Kubernetes
+    date: 2018-11-11
+  debugging-docker-container:
+    title: Debugging Docker container
+    date: 2018-07-18
+  documenting-ansible-roles:
+    title: Documenting Ansible roles
+    date: 2018-06-26
+  safe-development-environment:
+    title: Unprivileged QEMU
+    date: 2018-06-14
+  ovh-kernel-upgrade:
+    title: Upgrading kernel on OVH VPS
+    date: 2018-02-04

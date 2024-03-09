@@ -1,9 +1,0 @@
-[wrap-file]
-directory = sds-fb463145c9c245636feb28b5aac0fc897e16f67e
-source_url = https://github.com/antirez/sds/archive/fb463145c9c245636feb28b5aac0fc897e16f67e.tar.gz
-source_filename = sds-fb463145c9c245636feb28b5aac0fc897e16f67e.tar.gz
-source_hash = 25a0b3331b4550eea8f7f179ddfe549590320d9b9efba8a202557b6d16b2d7b2
-patch_directory = sds
-
-[provide]
-sds = sds_dep

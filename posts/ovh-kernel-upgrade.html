@@ -1,25 +1,5 @@
 <!DOCTYPE html>
-<html>
-<head>
-	<title>Upgrading kernel on OVH VPS</title>
-	<link href="/style.css" rel="stylesheet">
-	<meta charset="UTF-8" />
-	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-</head>
-<body>
-	<h1 id="title">
-		<a href="/">
-			Jakski's blog
-		</a>
-	</h1>
-	<!-- START BODY -->
-	<header>
-		<h1 id="post-title">Upgrading kernel on OVH VPS</h1>
-		<time id="post-date" datetime="2018-02-04">
-			2018-02-04
-		</time>
-	</header>
-	<p>Recently I noticed that despite upgrading kernel on my OVH VPS it's still using
+<html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><link rel="stylesheet" href="/style.css" /><title>Jakski</title></head><body><h1 id="title"><a href="/">Jakski's blog</a></h1><header><h1 id="post-title">Upgrading kernel on OVH VPS</h1><time id="post-date" datetime="2018-02-04">2018-02-04</time></header><p>Recently I noticed that despite upgrading kernel on my OVH VPS it's still using
 old version. After some research I discovered that OVH base image(Debian 8, VPS
 2016 SSD 1) uses extlinux to manage master boot record. While I was used to self
 updating GRUB configuration, extlinux didn't point to new kernel automatically
@@ -44,7 +24,4 @@ console=ttyS0,115200 ro quiet
 <pre><code>$ extlinux --install /boot/extlinux
 </code></pre>
 <p>After reboot extlinux loaded fresh kernel.</p>
-
-	<!-- END BODY -->
-</body>
-</html>
+</body></html>

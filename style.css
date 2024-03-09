@@ -117,9 +117,8 @@ header {
 	font-family: monospace;
 	font-style: italic;
 }
-#posts-list-item {
-	padding-top: 0.5rem;
-	padding-bottom: 0.5rem;
+.posts-list-item time {
+	padding-left: 0.5rem;
 }
 #title {
 	font-size: 3rem;

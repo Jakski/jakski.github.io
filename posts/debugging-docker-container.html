@@ -1,25 +1,5 @@
 <!DOCTYPE html>
-<html>
-<head>
-	<title>Debugging Docker container</title>
-	<link href="/style.css" rel="stylesheet">
-	<meta charset="UTF-8" />
-	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-</head>
-<body>
-	<h1 id="title">
-		<a href="/">
-			Jakski's blog
-		</a>
-	</h1>
-	<!-- START BODY -->
-	<header>
-		<h1 id="post-title">Debugging Docker container</h1>
-		<time id="post-date" datetime="2018-07-18">
-			2018-07-18
-		</time>
-	</header>
-	<p>Docker is all about caging some process sub-tree in isolated prison with
+<html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><link rel="stylesheet" href="/style.css" /><title>Jakski</title></head><body><h1 id="title"><a href="/">Jakski's blog</a></h1><header><h1 id="post-title">Debugging Docker container</h1><time id="post-date" datetime="2018-07-18">2018-07-18</time></header><p>Docker is all about caging some process sub-tree in isolated prison with
 provided resources. It's quite practical to have development environment
 separated in disposable containers. Problem arises, when we want to debug
 something that's imprisoned. Of course we can observe logs and check status
@@ -94,7 +74,4 @@ Container's PID namespace is perfectly visible to you. If you can locate
 container in you process tree, you can as well invoke <em>strace</em> passing host PID
 as argument rather then installing it in container and trying to debug from
 inside.</p>
-
-	<!-- END BODY -->
-</body>
-</html>
+</body></html>

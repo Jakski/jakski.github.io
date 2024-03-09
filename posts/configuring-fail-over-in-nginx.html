@@ -1,25 +1,5 @@
 <!DOCTYPE html>
-<html>
-<head>
-	<title>Configuring fail-over in Nginx</title>
-	<link href="/style.css" rel="stylesheet">
-	<meta charset="UTF-8" />
-	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-</head>
-<body>
-	<h1 id="title">
-		<a href="/">
-			Jakski's blog
-		</a>
-	</h1>
-	<!-- START BODY -->
-	<header>
-		<h1 id="post-title">Configuring fail-over in Nginx</h1>
-		<time id="post-date" datetime="2022-06-30">
-			2022-06-30
-		</time>
-	</header>
-	<p>What it means that a web server provides fail-over? It's usually understood as a
+<html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><link rel="stylesheet" href="/style.css" /><title>Jakski</title></head><body><h1 id="title"><a href="/">Jakski's blog</a></h1><header><h1 id="post-title">Configuring fail-over in Nginx</h1><time id="post-date" datetime="2022-06-30">2022-06-30</time></header><p>What it means that a web server provides fail-over? It's usually understood as a
 warranty that service will continue working even, if one of many instances stops
 functioning correctly. Ideally client shouldn't even notice that some instance
 ceased to serve requests. I'm going to walk you through configuring fail-over in
@@ -225,7 +205,4 @@ malformed-response
 protocol for this to happen. These days HTTP is usually handled on framework
 level, so developers are protected from making such errors in business logic
 code.</p>
-
-	<!-- END BODY -->
-</body>
-</html>
+</body></html>

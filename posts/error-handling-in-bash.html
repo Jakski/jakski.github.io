@@ -1,25 +1,5 @@
 <!DOCTYPE html>
-<html>
-<head>
-	<title>Error handling in Bash</title>
-	<link href="/style.css" rel="stylesheet">
-	<meta charset="UTF-8" />
-	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-</head>
-<body>
-	<h1 id="title">
-		<a href="/">
-			Jakski's blog
-		</a>
-	</h1>
-	<!-- START BODY -->
-	<header>
-		<h1 id="post-title">Error handling in Bash</h1>
-		<time id="post-date" datetime="2023-01-03">
-			2023-01-03
-		</time>
-	</header>
-	<p>Undesired behaviour - an error, can manifest in various ways. In most high-level
+<html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><link rel="stylesheet" href="/style.css" /><title>Jakski</title></head><body><h1 id="title"><a href="/">Jakski's blog</a></h1><header><h1 id="post-title">Error handling in Bash</h1><time id="post-date" datetime="2023-01-03">2023-01-03</time></header><p>Undesired behaviour - an error, can manifest in various ways. In most high-level
 programming languages errors are represented as dedicated objects, allowing to
 handle them without interrupting program execution. They usually require
 developer to explicitly mark bad program flows by throwing or raising problem
@@ -27,9 +7,9 @@ description. Bash don't provide any special syntax for this. Instead it allows
 to hook custom actions when non-zero exit code from command occurs. It's not
 universally treated as an error, since some applications use more than one exit
 code to signal success. Yet Bash contains some builtin commands and options named
-after <u>error</u> for handling such cases.</p>
+after <em>error</em> for handling such cases.</p>
 <h1>Unofficial strict mode</h1>
-<p>So called <u>unofficial strict mode</u> consist of the following options:</p>
+<p>So called <em>unofficial strict mode</em> consist of the following options:</p>
 <pre><code>set -o errexit
 set -o nounset
 set -o pipefail
@@ -287,7 +267,4 @@ nc -zw 1 127.0.0.1 80 || [ &quot;$?&quot; = 1 ] \
 <pre><code># bash t.sh
 Returned 1
 </code></pre>
-
-	<!-- END BODY -->
-</body>
-</html>
+</body></html>

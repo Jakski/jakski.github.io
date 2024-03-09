@@ -1,32 +1,14 @@
 <!DOCTYPE html>
-<html>
-<head>
-	<title>Debugging Go in Kubernetes</title>
-	<link href="/style.css" rel="stylesheet">
-	<meta charset="UTF-8" />
-	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-</head>
-<body>
-	<h1 id="title">
-		<a href="/">
-			Jakski's blog
-		</a>
-	</h1>
-	<!-- START BODY -->
-	<header>
-		<h1 id="post-title">Debugging Go in Kubernetes</h1>
-		<time id="post-date" datetime="2018-11-11">
-			2018-11-11
-		</time>
-	</header>
-	<p>Before we get into attaching debugger to Go application running on Kubernetes
+<html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><link rel="stylesheet" href="/style.css" /><title>Jakski</title></head><body><h1 id="title"><a href="/">Jakski's blog</a></h1><header><h1 id="post-title">Debugging Go in Kubernetes</h1><time id="post-date" datetime="2018-11-11">2018-11-11</time></header><p>Before we get into attaching debugger to Go application running on Kubernetes
 cluster, let's list a few debugging scenarios you might encounter:</p>
 <ul>
-<li><p>debugging running application with stripped symbols(<em>go
+<li>
+<p>debugging running application with stripped symbols(<em>go
 build -ldflags='-s -w'</em>) - probably the hardest scenario. To start debugging
 session you will need to get debugging symbols package for used build ID.</p>
 </li>
-<li><p>debugging running application with optimizations applied(<em>go build</em>) - while you will
+<li>
+<p>debugging running application with optimizations applied(<em>go build</em>) - while you will
 be able to launch debugger session on such process, you may encounter problems
 with inspecting application state, e.g.:</p>
 <pre><code>(dlv) args
@@ -34,7 +16,8 @@ r = (unreadable empty OP stack)
 w = net/http.ResponseWriter(*net/http.response) 0xbeef0008
 </code></pre>
 </li>
-<li><p>debugging running application with debugging symbols and without optimizations(<em>go
+<li>
+<p>debugging running application with debugging symbols and without optimizations(<em>go
 build -gcflags='all=-N -l'</em>) - the easiest case, where you have all required
 information in format understandable by debugger</p>
 </li>
@@ -180,7 +163,4 @@ environments. It's quite easy to:</p>
 timeouts</li>
 <li>affect other pods running on node</li>
 </ul>
-
-	<!-- END BODY -->
-</body>
-</html>
+</body></html>

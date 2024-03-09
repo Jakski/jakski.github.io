@@ -1,0 +1,26 @@
+{
+  "version": 2,
+  "packages": {
+    "yaml": {
+      "version": "2.1.1",
+      "vcsRevision": "48a90e36e82bd97457dae87e86efe423dcd3bb40",
+      "url": "https://github.com/flyx/NimYAML",
+      "downloadMethod": "git",
+      "dependencies": [],
+      "checksums": {
+        "sha1": "302727fcd74c79d0697a4e909d26455d61a5b979"
+      }
+    },
+    "markdown": {
+      "version": "0.8.7",
+      "vcsRevision": "e6379e25a33d1d79bb62ee285574e41a395ae2d7",
+      "url": "https://github.com/soasme/nim-markdown",
+      "downloadMethod": "git",
+      "dependencies": [],
+      "checksums": {
+        "sha1": "2fc60a4d5b3532018cb44982684af330e291dc5e"
+      }
+    }
+  },
+  "tasks": {}
+}

@@ -1,25 +1,5 @@
 <!DOCTYPE html>
-<html>
-<head>
-	<title>Low effort website monitoring</title>
-	<link href="/style.css" rel="stylesheet">
-	<meta charset="UTF-8" />
-	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-</head>
-<body>
-	<h1 id="title">
-		<a href="/">
-			Jakski's blog
-		</a>
-	</h1>
-	<!-- START BODY -->
-	<header>
-		<h1 id="post-title">Low effort website monitoring</h1>
-		<time id="post-date" datetime="2021-11-18">
-			2021-11-18
-		</time>
-	</header>
-	<p>While the most lazy website monitoring implementation would be probably to check
+<html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><link rel="stylesheet" href="/style.css" /><title>Jakski</title></head><body><h1 id="title"><a href="/">Jakski's blog</a></h1><header><h1 id="post-title">Low effort website monitoring</h1><time id="post-date" datetime="2021-11-18">2021-11-18</time></header><p>While the most lazy website monitoring implementation would be probably to check
 it in <code>cron</code> with <code>curl</code> every few minutes and send message on outage, I'm going
 to present a slightly more sophisticated solution to make it a little more
 usable. Note that idea below probably isn't be the best for long term, but
@@ -190,7 +170,4 @@ website, but it serves the purpose. No special software nor planning is required
 here, so it may be a great ad-hoc solution while you plan long term monitoring
 system like Icinga2, Prometheus or Zabbix.</p>
 <p>Full script can be found <a href="/media/low-effort-monitoring.sh">here</a>.</p>
-
-	<!-- END BODY -->
-</body>
-</html>
+</body></html>
