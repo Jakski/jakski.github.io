@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>2018-07-18 Debugging Docker container &#8212; OK, noted</title>
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
+    <link rel="stylesheet" type="text/css" href="../_static/classic.css?v=2bf1fcf8" />
+    <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
+    
+    <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="2018-06-26 Documenting Ansible roles" href="2018-06-26.html" />
+    <link rel="prev" title="2018-11-11 Debugging Go in Kubernetes" href="2018-11-11.html" /> 
+  </head><body>
+    <div class="related" role="navigation" aria-label="Related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="2018-06-26.html" title="2018-06-26 Documenting Ansible roles"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="2018-11-11.html" title="2018-11-11 Debugging Go in Kubernetes"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../index.html">OK, noted</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">2018-07-18 Debugging Docker container</a></li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <section id="debugging-docker-container">
+<h1>2018-07-18 Debugging Docker container<a class="headerlink" href="#debugging-docker-container" title="Link to this heading">¶</a></h1>
+<p>Docker is all about caging some process sub-tree in isolated prison with
+provided resources. It’s quite practical to have development environment
+separated in disposable containers. Problem arises, when we want to debug
+something that’s imprisoned. Of course we can observe logs and check status
+of our containers, but sometimes the most practical thing to do is to enter our
+container prison and see for ourselves how everything works inside.</p>
+<section id="native-docker-way-of-entering-prison-container">
+<h2>Native Docker way of entering prison(container)<a class="headerlink" href="#native-docker-way-of-entering-prison-container" title="Link to this heading">¶</a></h2>
+<p>Docker equips us with sub-command <em>exec</em>. It’s the easiest way to enter exactly
+the same environment as our imprisoned processes are using. While debugging, the
+most useful <em>exec</em> you can invoke is usually interactive shell like:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>$ docker exec -it backend_app_1 /bin/sh
+</pre></div>
+</div>
+<p>After this we’re ready to start issuing commands inside container and diagnose
+further bugs. This will launch command with same user as specified in
+<em>Dockerfile</em>. What, if you want e.g. to enter container as a <em>root</em>? <em>-u</em> flag
+comes with help. Simply type:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>$ docker exec -itu root backend_app_1 /bin/sh
+</pre></div>
+</div>
+<p>and you’re good to go.</p>
+</section>
+<section id="dirty-way-of-entering-prison">
+<h2>Dirty way of entering prison<a class="headerlink" href="#dirty-way-of-entering-prison" title="Link to this heading">¶</a></h2>
+<p>As you probably already know, Linux containers are made of namespaces. They are
+used to virtualise resources presented to imprisoned processes. Because they
+aren’t monolithic, you can enter only some of them, without being fully
+imprisoned. It’s useful, if you have some diagnostic tools on your host system,
+which you want to invoke in your container. <em>docker-exec</em> would normally put you
+inside all namespaces of running container. Tool <em>nsenter</em> will let you
+explicitly choose what you want to derive from container in some process. How
+you can find what namespaces to enter? You need to know only PID of running
+process. Since processes in containers are visible in our process tree, you can
+simply <em>grep</em> through <em>ps -eF</em> output. Let’s say you are looking for container
+with <em>uwsgi</em> running inside:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>$ ps -eF | grep uwsgi
+</pre></div>
+</div>
+<p>You should see at least one <em>uwsgi</em> process, if you’re really running it. Now
+let’s use <em>nsenter</em> to enter it’s network namespace alone:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>$ nsenter -n -t &lt;pid&gt;
+</pre></div>
+</div>
+<p>Now you’re in same network namespace as imprisoned process. Note that you can
+now diagnose network with all you tools from host system since you mount
+namespace wasn’t touched.</p>
+</section>
+<section id="duplicating-container-s-environment">
+<h2>Duplicating container’s environment<a class="headerlink" href="#duplicating-container-s-environment" title="Link to this heading">¶</a></h2>
+<p>Sometimes init script just fails without any readable reason, leaving container
+crashed without any processes in it. You cannot enter inactive prison. You can of
+course inspect it’s environment like volumes used by it. After initial analysis
+you will probably want to reproduce problem in controlled circumstances, e.g.
+by invoking entrance script in already imprisoned shell. Let’s say you would
+like to debug crushed container <em>backend_app_1</em>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>$ docker ps -a --format=&#39;{{.Names}} {{.Status}}&#39; -f &quot;name=backend_app_1&quot;
+backend_app_1 Exited (137) 9 hours ago
+</pre></div>
+</div>
+<p>You cannot run shell in container with this state. You save it’s current state
+though:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>$ docker commit backend_app_1 backend_app:debug
+</pre></div>
+</div>
+<p>To list all images matching tag <em>debug</em>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>$ docker images -f &#39;reference=`:debug&#39;
+REPOSITORY          TAG                 IMAGE ID            CREATED             SIZE
+backend_app         debug               8185ea95bd7d        2 minutes ago       215MB
+</pre></div>
+</div>
+<p>Now you can run this saved state with volumes from original container:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>$ docker run -it --entrypoint /bin/sh --volumes-from backend_app_1 --name debug backend_app:debug
+</pre></div>
+</div>
+<p>If you need some networks from original container, you can inspect it and plug
+debug container like, so:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>$ docker network connect backend_default debug
+</pre></div>
+</div>
+</section>
+<section id="final-thoughts">
+<h2>Final thoughts<a class="headerlink" href="#final-thoughts" title="Link to this heading">¶</a></h2>
+<p>I’ve described a few methods of getting into position of imprisoned processes.
+Remember that all resources used, by containers are actually visible on your
+host system, so entering prison isn’t always required, e.g. if you want to
+diagnose you container with <em>strace</em> you don’t have to enter it’s namespaces.
+Container’s PID namespace is perfectly visible to you. If you can locate
+container in you process tree, you can as well invoke <em>strace</em> passing host PID
+as argument rather then installing it in container and trying to debug from
+inside.</p>
+</section>
+</section>
+
+
+            <div class="clearer"></div>
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+  <div>
+    <h3><a href="../index.html">Table of Contents</a></h3>
+    <ul>
+<li><a class="reference internal" href="#">2018-07-18 Debugging Docker container</a><ul>
+<li><a class="reference internal" href="#native-docker-way-of-entering-prison-container">Native Docker way of entering prison(container)</a></li>
+<li><a class="reference internal" href="#dirty-way-of-entering-prison">Dirty way of entering prison</a></li>
+<li><a class="reference internal" href="#duplicating-container-s-environment">Duplicating container’s environment</a></li>
+<li><a class="reference internal" href="#final-thoughts">Final thoughts</a></li>
+</ul>
+</li>
+</ul>
+
+  </div>
+  <div>
+    <h4>Previous topic</h4>
+    <p class="topless"><a href="2018-11-11.html"
+                          title="previous chapter">2018-11-11 Debugging Go in Kubernetes</a></p>
+  </div>
+  <div>
+    <h4>Next topic</h4>
+    <p class="topless"><a href="2018-06-26.html"
+                          title="next chapter">2018-06-26 Documenting Ansible roles</a></p>
+  </div>
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="../_sources/posts/2018-07-18.md.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<search id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="Related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="2018-06-26.html" title="2018-06-26 Documenting Ansible roles"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="2018-11-11.html" title="2018-11-11 Debugging Go in Kubernetes"
+             >previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../index.html">OK, noted</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">2018-07-18 Debugging Docker container</a></li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+    &#169; Copyright .
+      Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 8.2.3.
+    </div>
+  </body>
+</html>

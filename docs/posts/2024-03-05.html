@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>2024-03-05 Returning value from Bash functions efficiently &#8212; OK, noted</title>
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
+    <link rel="stylesheet" type="text/css" href="../_static/classic.css?v=2bf1fcf8" />
+    <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
+    
+    <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="2023-09-02 Comparing JSON documents" href="2023-09-02.html" />
+    <link rel="prev" title="Index" href="../index.html" /> 
+  </head><body>
+    <div class="related" role="navigation" aria-label="Related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="2023-09-02.html" title="2023-09-02 Comparing JSON documents"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="../index.html" title="Index"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../index.html">OK, noted</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">2024-03-05 Returning value from Bash functions efficiently</a></li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <section id="returning-value-from-bash-functions-efficiently">
+<h1>2024-03-05 Returning value from Bash functions efficiently<a class="headerlink" href="#returning-value-from-bash-functions-efficiently" title="Link to this heading">¶</a></h1>
+<p>If you have programmed in Bash more than once, then you probably know the idiom
+of assigning a command result to a variable:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>output=$(some_command)
+</pre></div>
+</div>
+<p>What you’re most likely aware is that this creates a subshell, which is spawned
+as a separate process. If you plan to invoke an external program, then there’s
+no workaround for this. With functions this is the most straightforward, but
+not the fastest(runtime) way to get a result. Consider the following example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">fn</span><span class="p">()</span> <span class="p">{</span>
+	<span class="n">echo</span> <span class="s2">&quot;result&quot;</span>
+<span class="p">}</span>
+
+<span class="n">echo</span> <span class="s2">&quot;Invoked in subshell&quot;</span>
+<span class="n">time</span> <span class="p">(</span><span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="p">{</span><span class="mf">1..10000</span><span class="p">};</span> <span class="n">do</span> <span class="p">(</span><span class="n">fn</span><span class="p">)</span> <span class="o">&gt;/</span><span class="n">dev</span><span class="o">/</span><span class="n">null</span><span class="p">;</span> <span class="n">done</span><span class="p">)</span>
+<span class="n">echo</span>
+<span class="n">echo</span> <span class="s2">&quot;Invoked directly&quot;</span>
+<span class="n">time</span> <span class="p">(</span><span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="p">{</span><span class="mf">1..10000</span><span class="p">};</span> <span class="n">do</span> <span class="n">fn</span> <span class="o">&gt;/</span><span class="n">dev</span><span class="o">/</span><span class="n">null</span><span class="p">;</span> <span class="n">done</span><span class="p">)</span>
+</pre></div>
+</div>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">Invoked</span> <span class="ow">in</span> <span class="n">subshell</span>
+
+<span class="n">real</span>    <span class="mi">0</span><span class="n">m9</span><span class="mf">.619</span><span class="n">s</span>
+<span class="n">user</span>    <span class="mi">0</span><span class="n">m6</span><span class="mf">.325</span><span class="n">s</span>
+<span class="n">sys</span>     <span class="mi">0</span><span class="n">m3</span><span class="mf">.594</span><span class="n">s</span>
+
+<span class="n">Invoked</span> <span class="n">directly</span>
+
+<span class="n">real</span>    <span class="mi">0</span><span class="n">m0</span><span class="mf">.243</span><span class="n">s</span>
+<span class="n">user</span>    <span class="mi">0</span><span class="n">m0</span><span class="mf">.162</span><span class="n">s</span>
+<span class="n">sys</span>     <span class="mi">0</span><span class="n">m0</span><span class="mf">.079</span><span class="n">s</span>
+</pre></div>
+</div>
+<p>In 10 thousand loops we’ve got over 9 seconds of difference. I’ve immediately
+discarded results of <code class="docutils literal notranslate"><span class="pre">fn()</span></code>, but in real life we would typically want to save it
+in some variable. For most scripts even such a long execution time will be
+acceptable, but in rare cases you’ll wonder how to postpone using another
+language by optimizing a current solution. Let’s talkover a few methods for
+doing that.</p>
+<section id="predefined-variable-for-passing-a-results">
+<h2>Predefined variable for passing a results<a class="headerlink" href="#predefined-variable-for-passing-a-results" title="Link to this heading">¶</a></h2>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">declare</span> <span class="n">RESULT</span>
+
+<span class="n">fn</span><span class="p">()</span> <span class="p">{</span>
+	<span class="n">RESULT</span><span class="o">=</span><span class="s2">&quot;result&quot;</span>
+<span class="p">}</span>
+
+<span class="n">declare</span> <span class="n">accumulator</span><span class="o">=</span><span class="s2">&quot;&quot;</span>
+<span class="n">time</span> <span class="p">(</span><span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="p">{</span><span class="mf">1..10000</span><span class="p">};</span> <span class="n">do</span> <span class="n">fn</span><span class="p">;</span> <span class="n">accumulator</span><span class="o">+=</span><span class="s2">&quot;$RESULT&quot;</span><span class="p">;</span> <span class="n">done</span><span class="p">)</span>
+</pre></div>
+</div>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">real</span>    <span class="mi">0</span><span class="n">m0</span><span class="mf">.059</span><span class="n">s</span>
+<span class="n">user</span>    <span class="mi">0</span><span class="n">m0</span><span class="mf">.059</span><span class="n">s</span>
+<span class="n">sys</span>     <span class="mi">0</span><span class="n">m0</span><span class="mf">.000</span><span class="n">s</span>
+</pre></div>
+</div>
+<p>With only a few changes we’ve gained a tremendous performance boost. So what’s
+the catch? Our function now modifies a variable from outer scope. If you control
+the calling environment, then this is fine. Problem appears when <code class="docutils literal notranslate"><span class="pre">RESULT</span></code> is
+already used for something else in outer scope. Now usage of this additional
+variable becomes a part of our function interface and all callers must be aware
+of this. If you or your colleague forget about it, then you might end up
+spending a lot of time, debugging what went wrong.</p>
+</section>
+<section id="pipelines">
+<h2>Pipelines<a class="headerlink" href="#pipelines" title="Link to this heading">¶</a></h2>
+<p>If you need to call some function repeatedly, then it might be worth to move the
+loop into a function itself. If you still need to process results one-by-one,
+then you can run it in pipeline.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>fn() {
+	declare counter=$1
+	while [ &quot;$counter&quot; != 0 ]; do
+		echo &quot;result&quot;
+		counter=$((counter - 1))
+	done
+}
+
+declare line
+time (fn 10000 | while IFS=&quot;&quot; read -r line; do echo &quot;$line&quot; &gt;/dev/null; done)
+</pre></div>
+</div>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">real</span>    <span class="mi">0</span><span class="n">m0</span><span class="mf">.309</span><span class="n">s</span>
+<span class="n">user</span>    <span class="mi">0</span><span class="n">m0</span><span class="mf">.264</span><span class="n">s</span>
+<span class="n">sys</span>     <span class="mi">0</span><span class="n">m0</span><span class="mf">.136</span><span class="n">s</span>
+</pre></div>
+</div>
+<p>Last process in pipe is still executed in subshell. It’s still way more optimal
+than running 10 thousand subshells, but also prevents you from accessing
+variables in caller’s scope. You skip this limitation by using <code class="docutils literal notranslate"><span class="pre">lastpipe</span></code> shell
+option.</p>
+</section>
+<section id="indirection-with-namerefs">
+<h2>Indirection with namerefs<a class="headerlink" href="#indirection-with-namerefs" title="Link to this heading">¶</a></h2>
+<p>Bash allows you to reference a variable by value stored in other variable. It
+works like a pointer. One way to achieve that is by using a namerefs.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>fn() {
+	declare -n dest=$1
+	dest+=&quot;result&quot;
+}
+
+time (declare result=&quot;&quot;; for i in {1..10000}; do fn result; done)
+</pre></div>
+</div>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">real</span>    <span class="mi">0</span><span class="n">m0</span><span class="mf">.076</span><span class="n">s</span>
+<span class="n">user</span>    <span class="mi">0</span><span class="n">m0</span><span class="mf">.076</span><span class="n">s</span>
+<span class="n">sys</span>     <span class="mi">0</span><span class="n">m0</span><span class="mf">.000</span><span class="n">s</span>
+</pre></div>
+</div>
+<p>The problem with namerefs is that they occupy a scope with yet another variable
+name.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>fn() {
+	declare -n dest=$1
+	declare result=&quot;result&quot;
+	dest+=&quot;$result&quot;
+}
+
+time (declare result=&quot;&quot;; for i in {1..2}; do fn result; done; echo &quot;$result&quot;)
+</pre></div>
+</div>
+<p>You would expect <code class="docutils literal notranslate"><span class="pre">result</span></code> variable to contain <code class="docutils literal notranslate"><span class="pre">resultresult</span></code>, right? Well,
+that’s not Bash will handle this situation. As far as I understand this is an
+undefined behaviour, but on my system <code class="docutils literal notranslate"><span class="pre">result</span></code> variable ended up being empty.
+This means that namerefs impose a similar limitation as a solution with
+predefined variable. Caller still needs to be aware what name is reserved.</p>
+</section>
+<section id="indirection-with-eval">
+<h2>Indirection with eval<a class="headerlink" href="#indirection-with-eval" title="Link to this heading">¶</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">eval</span></code> builtin can be very dangerous, so always think twice before using it. If
+arguments are not sanitized, then it can easily lead to malicious code
+injection. Having this in mind Bash provides 2 ways to avoid unsolicited word
+splitting or expansion:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">printf</span> <span class="pre">&quot;%q&quot;</span></code> - builtin allowing to output shell-escaped values</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">${var&#64;Q}</span></code> - parameter expansion using a <code class="docutils literal notranslate"><span class="pre">Q</span></code> transformation</p></li>
+</ul>
+<p>Both of them help us ensure that argument we pass are actually treated as a
+single argument with proper quotting and escaping. Let’s say that now our
+function needs to add some provided argument to result.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">fn</span><span class="p">()</span> <span class="p">{</span>
+	<span class="nb">eval</span> <span class="s2">&quot;$</span><span class="si">{1}</span><span class="s2">+=$</span><span class="si">{2}</span><span class="s2">&quot;</span>
+<span class="p">}</span>
+
+<span class="n">time</span> <span class="p">(</span><span class="n">declare</span> <span class="n">result</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">;</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="p">{</span><span class="mf">1..2</span><span class="p">};</span> <span class="n">do</span> <span class="n">fn</span> <span class="n">result</span> <span class="s2">&quot;a; echo hacked&quot;</span><span class="p">;</span> <span class="n">done</span><span class="p">;</span> <span class="n">echo</span> <span class="s2">&quot;$result&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">hacked</span>
+<span class="n">hacked</span>
+<span class="n">aa</span>
+
+<span class="n">real</span>    <span class="mi">0</span><span class="n">m0</span><span class="mf">.000</span><span class="n">s</span>
+<span class="n">user</span>    <span class="mi">0</span><span class="n">m0</span><span class="mf">.000</span><span class="n">s</span>
+<span class="n">sys</span>     <span class="mi">0</span><span class="n">m0</span><span class="mf">.000</span><span class="n">s</span>
+</pre></div>
+</div>
+<p>See the 2 lines <code class="docutils literal notranslate"><span class="pre">hacked</span></code>? This is the proof that we manage to inject arbitrary
+code into function. That’s usually not what we want, so let’s fix it with
+transformation.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">fn</span><span class="p">()</span> <span class="p">{</span>
+	<span class="nb">eval</span> <span class="s2">&quot;$</span><span class="si">{1}</span><span class="s2">+=${2@Q}&quot;</span>
+<span class="p">}</span>
+
+<span class="n">time</span> <span class="p">(</span><span class="n">declare</span> <span class="n">result</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">;</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="p">{</span><span class="mf">1..2</span><span class="p">};</span> <span class="n">do</span> <span class="n">fn</span> <span class="n">result</span> <span class="s2">&quot;a; echo hacked&quot;</span><span class="p">;</span> <span class="n">done</span><span class="p">;</span> <span class="n">echo</span> <span class="s2">&quot;$result&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">a</span><span class="p">;</span> <span class="n">echo</span> <span class="n">hackeda</span><span class="p">;</span> <span class="n">echo</span> <span class="n">hacked</span>
+
+<span class="n">real</span>    <span class="mi">0</span><span class="n">m0</span><span class="mf">.000</span><span class="n">s</span>
+<span class="n">user</span>    <span class="mi">0</span><span class="n">m0</span><span class="mf">.000</span><span class="n">s</span>
+<span class="n">sys</span>     <span class="mi">0</span><span class="n">m0</span><span class="mf">.000</span><span class="n">s</span>
+</pre></div>
+</div>
+<p>Now we’re relatively safe.</p>
+<section id="ab-using-positional-parameters">
+<h3>(Ab)using positional parameters<a class="headerlink" href="#ab-using-positional-parameters" title="Link to this heading">¶</a></h3>
+<p>You may have noticed that this method still doesn’t allow us to use our own
+variables, since there may be a collission with <code class="docutils literal notranslate"><span class="pre">$1</span></code> passed from the caller.
+We aren’t safe to declare our own variable, so the only variables local to our
+function are positional parameters. You can change them using <code class="docutils literal notranslate"><span class="pre">set</span> <span class="pre">--</span> <span class="pre">arg1</span> <span class="pre">arg2</span></code>
+shell builtin. This method makes your code very unreadable, but sometimes choice
+is an absent luxury. Let’s say that for some reason you need to backquote square
+brackets and uppercase an argument to function.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">fn</span><span class="p">()</span> <span class="p">{</span>
+	<span class="nb">set</span> <span class="o">--</span> <span class="s2">&quot;$1&quot;</span> <span class="s2">&quot;${2//\]/</span><span class="se">\\</span><span class="s2">]}&quot;</span>
+	<span class="nb">set</span> <span class="o">--</span> <span class="s2">&quot;$1&quot;</span> <span class="s2">&quot;${2//\[/</span><span class="se">\\</span><span class="s2">[}&quot;</span>
+	<span class="nb">set</span> <span class="o">--</span> <span class="s2">&quot;$1&quot;</span> <span class="s2">&quot;${2^^}&quot;</span>
+	<span class="nb">eval</span> <span class="s2">&quot;$</span><span class="si">{1}</span><span class="s2">+=${2@Q}&quot;</span>
+<span class="p">}</span>
+
+<span class="n">time</span> <span class="p">(</span><span class="n">declare</span> <span class="n">result</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">;</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="p">{</span><span class="mf">1..2</span><span class="p">};</span> <span class="n">do</span> <span class="n">fn</span> <span class="n">result</span> <span class="s2">&quot;[value]&quot;</span><span class="p">;</span> <span class="n">done</span><span class="p">;</span> <span class="n">echo</span> <span class="s2">&quot;$result&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>\<span class="p">[</span><span class="n">VALUE</span>\<span class="p">]</span>\<span class="p">[</span><span class="n">VALUE</span>\<span class="p">]</span>
+
+<span class="n">real</span>    <span class="mi">0</span><span class="n">m0</span><span class="mf">.001</span><span class="n">s</span>
+<span class="n">user</span>    <span class="mi">0</span><span class="n">m0</span><span class="mf">.001</span><span class="n">s</span>
+<span class="n">sys</span>     <span class="mi">0</span><span class="n">m0</span><span class="mf">.000</span><span class="n">s</span>
+</pre></div>
+</div>
+</section>
+</section>
+</section>
+
+
+            <div class="clearer"></div>
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+  <div>
+    <h3><a href="../index.html">Table of Contents</a></h3>
+    <ul>
+<li><a class="reference internal" href="#">2024-03-05 Returning value from Bash functions efficiently</a><ul>
+<li><a class="reference internal" href="#predefined-variable-for-passing-a-results">Predefined variable for passing a results</a></li>
+<li><a class="reference internal" href="#pipelines">Pipelines</a></li>
+<li><a class="reference internal" href="#indirection-with-namerefs">Indirection with namerefs</a></li>
+<li><a class="reference internal" href="#indirection-with-eval">Indirection with eval</a><ul>
+<li><a class="reference internal" href="#ab-using-positional-parameters">(Ab)using positional parameters</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+  </div>
+  <div>
+    <h4>Previous topic</h4>
+    <p class="topless"><a href="../index.html"
+                          title="previous chapter">Index</a></p>
+  </div>
+  <div>
+    <h4>Next topic</h4>
+    <p class="topless"><a href="2023-09-02.html"
+                          title="next chapter">2023-09-02 Comparing JSON documents</a></p>
+  </div>
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="../_sources/posts/2024-03-05.md.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<search id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="Related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="2023-09-02.html" title="2023-09-02 Comparing JSON documents"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="../index.html" title="Index"
+             >previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../index.html">OK, noted</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">2024-03-05 Returning value from Bash functions efficiently</a></li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+    &#169; Copyright .
+      Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 8.2.3.
+    </div>
+  </body>
+</html>

@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>2019-05-26 Advanced curl usage &#8212; OK, noted</title>
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
+    <link rel="stylesheet" type="text/css" href="../_static/classic.css?v=2bf1fcf8" />
+    <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
+    
+    <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="2019-02-09 Neovim error: Channel doesn’t exist" href="2019-02-09.html" />
+    <link rel="prev" title="2021-11-18 Low effort website monitoring" href="2021-11-18.html" /> 
+  </head><body>
+    <div class="related" role="navigation" aria-label="Related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="2019-02-09.html" title="2019-02-09 Neovim error: Channel doesn’t exist"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="2021-11-18.html" title="2021-11-18 Low effort website monitoring"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../index.html">OK, noted</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">2019-05-26 Advanced curl usage</a></li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <section id="advanced-curl-usage">
+<h1>2019-05-26 Advanced curl usage<a class="headerlink" href="#advanced-curl-usage" title="Link to this heading">¶</a></h1>
+<p>This post is rather a cheatsheet with examples than curl guide. There’s a lot of
+CLI REST tools available for described situations, but <code class="docutils literal notranslate"><span class="pre">curl</span></code> is probably the
+most common one.</p>
+<section id="formatting-responsess">
+<h2>Formatting responsess<a class="headerlink" href="#formatting-responsess" title="Link to this heading">¶</a></h2>
+<p>If you want to see well-formatted JSON responses, then
+<a class="reference external" href="https://stedolan.github.io/jq/">jq</a> is a tool you’re looking for. You need only
+to pipe <code class="docutils literal notranslate"><span class="pre">curl</span></code> output to it.</p>
+</section>
+<section id="using-configuration-file">
+<h2>Using configuration file<a class="headerlink" href="#using-configuration-file" title="Link to this heading">¶</a></h2>
+<p>Sometimes you need to specify a lot of HTTP headers and <em>curl</em> parameters on
+every request, when you’re testing some feature. Having it all on command-line
+might decrease readability. Remember that you can save common options(e.g.: per
+project) in configuration file and reuse them later. Let’s say that you need
+some configuration for interacting with Elasticsearch REST API.</p>
+<p><em>curl</em> configuration file(<em>tst.conf</em>):</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">header</span> <span class="o">=</span> <span class="s2">&quot;Content-Type: application/json&quot;</span>
+<span class="n">silent</span>
+<span class="n">show</span><span class="o">-</span><span class="n">error</span>
+<span class="n">location</span>
+</pre></div>
+</div>
+<p>JSON payload(<em>tst.json</em>):</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+  <span class="s2">&quot;settings&quot;</span><span class="p">:</span> <span class="p">{</span>
+    <span class="s2">&quot;index&quot;</span><span class="p">:</span> <span class="p">{</span>
+      <span class="s2">&quot;number_of_shards&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+      <span class="s2">&quot;number_of_replicas&quot;</span><span class="p">:</span> <span class="mi">1</span>
+    <span class="p">}</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>Usage:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>$ curl -K tst.conf -X PUT &quot;$URL/index1&quot; -d @tst.json | jq
+{
+  &quot;acknowledged&quot;: true,
+  &quot;shards_acknowledged&quot;: true,
+  &quot;index&quot;: &quot;index1&quot;
+}
+</pre></div>
+</div>
+</section>
+<section id="filtering-data-from-responses">
+<h2>Filtering data from responses<a class="headerlink" href="#filtering-data-from-responses" title="Link to this heading">¶</a></h2>
+<p><em>jq</em> can do much more than formatting JSON. It can also construct output
+documents and filter fields. Let’s say that we want to list Elasticsearch
+indices with their corresponding versions.</p>
+<p>Response without filter:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>$ curl -K tst.conf -X GET &quot;$URL/*&quot; | jq
+{
+  &quot;index1&quot;: {
+    &quot;aliases&quot;: {},
+    &quot;mappings&quot;: {},
+    &quot;settings&quot;: {
+      &quot;index&quot;: {
+        &quot;creation_date&quot;: &quot;1558867477524&quot;,
+        &quot;number_of_shards&quot;: &quot;1&quot;,
+        &quot;number_of_replicas&quot;: &quot;1&quot;,
+        &quot;uuid&quot;: &quot;BrZ7xSPfRqOK3dMFEkrzWw&quot;,
+        &quot;version&quot;: {
+          &quot;created&quot;: &quot;7010099&quot;
+        },
+        &quot;provided_name&quot;: &quot;index1&quot;
+      }
+    }
+  },
+  &quot;index2&quot;: {
+    &quot;aliases&quot;: {},
+    &quot;mappings&quot;: {},
+    &quot;settings&quot;: {
+      &quot;index&quot;: {
+        &quot;creation_date&quot;: &quot;1558867998439&quot;,
+        &quot;number_of_shards&quot;: &quot;1&quot;,
+        &quot;number_of_replicas&quot;: &quot;1&quot;,
+        &quot;uuid&quot;: &quot;P3UHaYpOQ-62HjPKOE1LPQ&quot;,
+        &quot;version&quot;: {
+          &quot;created&quot;: &quot;7010099&quot;
+        },
+        &quot;provided_name&quot;: &quot;index2&quot;
+      }
+    }
+  },
+  &quot;index3&quot;: {
+    &quot;aliases&quot;: {},
+    &quot;mappings&quot;: {},
+    &quot;settings&quot;: {
+      &quot;index&quot;: {
+        &quot;creation_date&quot;: &quot;1558868001868&quot;,
+        &quot;number_of_shards&quot;: &quot;1&quot;,
+        &quot;number_of_replicas&quot;: &quot;1&quot;,
+        &quot;uuid&quot;: &quot;_1wbEzRzRAyNQLkmD7_ctg&quot;,
+        &quot;version&quot;: {
+          &quot;created&quot;: &quot;7010099&quot;
+        },
+        &quot;provided_name&quot;: &quot;index3&quot;
+      }
+    }
+  }
+}
+</pre></div>
+</div>
+<p>Selecting data we want to see:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>$ curl -K tst.conf -X GET &quot;$URL/*&quot; | jq &#39;to_entries[] | {index: .key, version: .value.settings.index.version }&#39;
+{
+  &quot;index&quot;: &quot;index1&quot;,
+  &quot;version&quot;: {
+    &quot;created&quot;: &quot;7010099&quot;
+  }
+}
+{
+  &quot;index&quot;: &quot;index2&quot;,
+  &quot;version&quot;: {
+    &quot;created&quot;: &quot;7010099&quot;
+  }
+}
+{
+  &quot;index&quot;: &quot;index3&quot;,
+  &quot;version&quot;: {
+    &quot;created&quot;: &quot;7010099&quot;
+  }
+}
+</pre></div>
+</div>
+</section>
+<section id="embedding-long-string-in-get-queries">
+<h2>Embedding long string in GET queries<a class="headerlink" href="#embedding-long-string-in-get-queries" title="Link to this heading">¶</a></h2>
+<p>Most HTTP servers limit size of HTTP line, yet carrying ~100 characters long
+string around is error prone. Placing it directly in <em>curl</em> parameter may lead
+to unexpected behaviour, when you forget to properly encode some characters. We
+can work around this problem by using <em>-G</em> and <em>–data-urlencode</em> options with
+<em>curl</em>. Let’s say that we want to use Elasticsearch scroll.</p>
+<p>Example query(<em>tst.json</em>):</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+  <span class="s2">&quot;size&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+  <span class="s2">&quot;query&quot;</span><span class="p">:</span> <span class="p">{</span>
+    <span class="s2">&quot;match_all&quot;</span><span class="p">:</span> <span class="p">{}</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>Create scroll and store ID without new line:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>$ curl -K tst.conf -X POST &quot;$URL/_search?scroll=10m&quot; -d @tst.json | jq -r &#39;._scroll_id&#39; | tr -d &#39;\n&#39; &gt; scroll_id.txt
+</pre></div>
+</div>
+<p>Retrieve results from scroll:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>$ curl -K tst.conf -GX GET &quot;$URL/_search/scroll&quot; --data-urlencode &quot;scroll_id@scroll_id.txt&quot; | jq
+{
+  &quot;took&quot;: 6,
+  &quot;timed_out&quot;: false,
+  &quot;_shards&quot;: {
+    &quot;total&quot;: 1,
+    &quot;successful&quot;: 1,
+    &quot;skipped&quot;: 0,
+    &quot;failed&quot;: 0
+  },
+  &quot;hits&quot;: {
+    &quot;total&quot;: {
+      &quot;value&quot;: 0,
+      &quot;relation&quot;: &quot;eq&quot;
+    },
+    &quot;max_score&quot;: null,
+    &quot;hits&quot;: []
+  }
+}
+</pre></div>
+</div>
+</section>
+</section>
+
+
+            <div class="clearer"></div>
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+  <div>
+    <h3><a href="../index.html">Table of Contents</a></h3>
+    <ul>
+<li><a class="reference internal" href="#">2019-05-26 Advanced curl usage</a><ul>
+<li><a class="reference internal" href="#formatting-responsess">Formatting responsess</a></li>
+<li><a class="reference internal" href="#using-configuration-file">Using configuration file</a></li>
+<li><a class="reference internal" href="#filtering-data-from-responses">Filtering data from responses</a></li>
+<li><a class="reference internal" href="#embedding-long-string-in-get-queries">Embedding long string in GET queries</a></li>
+</ul>
+</li>
+</ul>
+
+  </div>
+  <div>
+    <h4>Previous topic</h4>
+    <p class="topless"><a href="2021-11-18.html"
+                          title="previous chapter">2021-11-18 Low effort website monitoring</a></p>
+  </div>
+  <div>
+    <h4>Next topic</h4>
+    <p class="topless"><a href="2019-02-09.html"
+                          title="next chapter">2019-02-09 Neovim error: Channel doesn’t exist</a></p>
+  </div>
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="../_sources/posts/2019-05-26.md.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<search id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="Related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="2019-02-09.html" title="2019-02-09 Neovim error: Channel doesn’t exist"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="2021-11-18.html" title="2021-11-18 Low effort website monitoring"
+             >previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../index.html">OK, noted</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">2019-05-26 Advanced curl usage</a></li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+    &#169; Copyright .
+      Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 8.2.3.
+    </div>
+  </body>
+</html>

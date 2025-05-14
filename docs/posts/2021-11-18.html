@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>2021-11-18 Low effort website monitoring &#8212; OK, noted</title>
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
+    <link rel="stylesheet" type="text/css" href="../_static/classic.css?v=2bf1fcf8" />
+    <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
+    
+    <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="2019-05-26 Advanced curl usage" href="2019-05-26.html" />
+    <link rel="prev" title="2022-04-04 Securing development environment" href="2022-04-04.html" /> 
+  </head><body>
+    <div class="related" role="navigation" aria-label="Related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="2019-05-26.html" title="2019-05-26 Advanced curl usage"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="2022-04-04.html" title="2022-04-04 Securing development environment"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../index.html">OK, noted</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">2021-11-18 Low effort website monitoring</a></li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <section id="low-effort-website-monitoring">
+<h1>2021-11-18 Low effort website monitoring<a class="headerlink" href="#low-effort-website-monitoring" title="Link to this heading">¶</a></h1>
+<p>While the most lazy website monitoring implementation would be probably to check
+it in <code class="docutils literal notranslate"><span class="pre">cron</span></code> with <code class="docutils literal notranslate"><span class="pre">curl</span></code> every few minutes and send message on outage, I’m going
+to present a slightly more sophisticated solution to make it a little more
+usable. Note that idea below probably isn’t be the best for long term, but
+often any solution is better than no solution at all.</p>
+<section id="requirements">
+<h2>Requirements<a class="headerlink" href="#requirements" title="Link to this heading">¶</a></h2>
+<p>By operator I mean person responsible for service reliability. Ideally that
+would be someone involved in website development or hosting maintainer.</p>
+<blockquote>
+<div><p><strong>Protip</strong>: Notifications are the most effective when receiver knows how to
+react on them.</p>
+</div></blockquote>
+<ul class="simple">
+<li><p>Operator must be notified on outage.</p></li>
+<li><p>Monitoring must not rely on website hosting availability. I’m talking about
+single node deployments here. Operator must be informed not only when check
+failed, but also when check wasn’t performed.</p></li>
+<li><p>Monitoring must provide reason for notification. Messages like <em>It’s not
+working</em> aren’t very insightful.</p></li>
+<li><p>Implementation must be simple, lightweight and cheap. Preferably allowing
+self-hosting and open-source.</p></li>
+</ul>
+</section>
+<section id="incremental-development">
+<h2>Incremental development<a class="headerlink" href="#incremental-development" title="Link to this heading">¶</a></h2>
+<p>Let’s assume that we’re dealing with website hosted on a cheap GNU/Linux VPS
+instance that consists of application exposed via HTTPS. It makes
+sense to check liveness at minimum. For now we don’t care, if our application
+performs well. Availability is our only concern.</p>
+<section id="basic-http-service-check-with-notification">
+<h3>Basic HTTP service check with notification<a class="headerlink" href="#basic-http-service-check-with-notification" title="Link to this heading">¶</a></h3>
+<p>To keep things simple and increase reliability we will keep service checking and
+reporting/notifying logic separately.</p>
+<ul class="simple">
+<li><p><em>Service checking</em> - Since shell is usually available out-of-the-box we will
+build service checks using widely available command line tools.</p></li>
+<li><p><em>Reporting/notifying</em> - This is a bit harder. Keep in mind that we need
+notifications also when service checking hasn’t finished on time. Hosting
+anything on the same instance as application will not be sufficient. Using
+external service might introduce vendor lock-in, but we want it cheap.
+Fortunately there’s some middle ground like
+<a class="reference external" href="https://healthchecks.io">Healthchecks</a> - an open source monitoring platform,
+also hosted as a service with free subscription tier.</p></li>
+</ul>
+<p>Using <em>Healthchecks</em> means that we will need to notify external service about
+service check results. <code class="docutils literal notranslate"><span class="pre">curl</span></code> will do the job here. Let’s start with some
+minimal script:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>#!/usr/bin/env bash
+
+CURL_OPTIONS=&quot;--max-time 5 --retry 3 --fail --silent --show-error&quot;
+SERVICE_URL=https://app.local/
+HEALTCHECK_URL=https://hc-ping.com/82583301-bd04-4028-9695-fc5473abc15d
+
+curl $CURL_OPTIONS &quot;$SERVICE_URL&quot;
+curl $CURL_OPTIONS &quot;${HEALTCHECK_URL}/${?}&quot;
+</pre></div>
+</div>
+<p>Above script will send it’s status code in ping to <em>Healthchecks</em>, where we
+should configure notifications(Telegram integration works well) and <strong>Schedule</strong> -
+it’s crucial to receive alert when our service is not sending any pings, it
+may mean that whole VPS is down. Yet we still don’t have context what exactly
+went wrong. Let’s use <a class="reference external" href="http://redsymbol.net/articles/unofficial-bash-strict-mode/">Bash strict
+mode</a> and change
+script to send <code class="docutils literal notranslate"><span class="pre">curl</span></code> error text in ping:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>#!/usr/bin/env bash
+
+set -euo pipefail
+
+CURL_OPTIONS=&quot;--max-time 5 --retry 3 --fail --silent --show-error&quot;
+SERVICE_URL=https://app.local/
+HEALTCHECK_URL=https://hc-ping.com/82583301-bd04-4028-9695-fc5473abc15d
+RESULT=&quot;&quot;
+
+on_exit() {
+	curl $CURL_OPTIONS --data-raw &quot;$RESULT&quot; &quot;${HEALTCHECK_URL}/${?}&quot; &gt;/dev/null
+}
+
+main () {
+	trap on_exit EXIT
+	RESULT=$(curl $CURL_OPTIONS &quot;$SERVICE_URL&quot; 2&gt;&amp;1 1&gt;/dev/null)
+}
+
+main &quot;$@&quot;
+</pre></div>
+</div>
+<p>Now operator will be notified about possible outages and alert will include some
+context what exactly went wrong like:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">curl</span><span class="p">:</span> <span class="p">(</span><span class="mi">7</span><span class="p">)</span> <span class="n">Failed</span> <span class="n">to</span> <span class="n">connect</span> <span class="n">to</span> <span class="n">app</span><span class="o">.</span><span class="n">local</span> <span class="n">port</span> <span class="mi">443</span><span class="p">:</span> <span class="n">Connection</span> <span class="n">refused</span>
+</pre></div>
+</div>
+</section>
+<section id="service-is-available-but-does-it-perform-well">
+<h3>Service is available, but does it perform well?<a class="headerlink" href="#service-is-available-but-does-it-perform-well" title="Link to this heading">¶</a></h3>
+<p>While performance can be measured in many ways, we will focus on one simple
+metric: <em>response time</em>. <code class="docutils literal notranslate"><span class="pre">curl</span></code> can measure it out-of-the-box, but we will need
+to invoke it differently and format output message:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span># on_exit version supporting custom EXIT_CODE
+on_exit() {
+	local exit_code=$?
+	if [ -n &quot;$EXIT_CODE&quot; ]; then
+		exit_code=$EXIT_CODE
+	fi
+	curl $CURL_OPTIONS --data-raw &quot;$RESULT&quot; &quot;${HEALTCHECK_URL}/${exit_code}&quot; &gt;/dev/null
+	exit &quot;$exit_code&quot;
+}
+
+# Alert, if curl failed or response takes longer than 2 seconds
+CHECK_HTTP_TIMEOUT=2
+main () {
+	trap on_exit EXIT
+	RESULT=&quot;Response time: $(curl $CURL_OPTIONS &quot;$SERVICE_URL&quot; -o /dev/null --write-out &#39;%{time_total}&#39; 2&gt;&amp;1)&quot;
+	local time_total
+	time_total=$(echo &quot;$RESULT&quot; | rev | cut -d &#39; &#39; -f 1 | rev)
+	echo &quot;$time_total&quot;
+	if [ &quot;$(echo &quot;${time_total} &gt; ${CHECK_HTTP_TIMEOUT}&quot; | bc)&quot; -eq 1 ]; then
+		RESULT=&quot;${RESULT}&quot;$&#39;\n&#39;&quot;Too high response time!&quot;
+		EXIT_CODE=1
+	fi
+}
+</pre></div>
+</div>
+</section>
+<section id="what-about-other-metrics">
+<h3>What about other metrics?<a class="headerlink" href="#what-about-other-metrics" title="Link to this heading">¶</a></h3>
+<p><em>Healthchecks</em> limits us to 10 kilobytes payload for each ping, but remember
+that we want to keep it simple, so it’s not much of a problem. Rearranging our
+script into self-descriptive functions will be useful to include more checks:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span># Trigger alert when used memory exceeds 95%
+CHECK_MEMORY_THRESHOLD=95
+check_memory() {
+	RESULT=&quot;${RESULT}&quot;$&#39;\n&#39;&quot;Memory usage: $(exec 2&gt;&amp;1; free | grep Mem | awk &#39;{print $3/$2 * 100.0}&#39;)&quot;
+	local used
+	used=$(echo &quot;$RESULT&quot; | tail -n 1 | rev | cut -d &#39; &#39; -f 1 | rev)
+	if [ &quot;$(echo &quot;${used} &gt; ${CHECK_MEMORY_THRESHOLD}&quot; | bc)&quot; -eq 1 ]; then
+		RESULT=&quot;${RESULT}&quot;$&#39;\n&#39;&quot;Too high memory usage!&quot;
+		EXIT_CODE=1
+	fi
+}
+
+main () {
+	trap on_exit EXIT
+	check_http
+	check_memory
+}
+</pre></div>
+</div>
+<p>Observing SSL expiration date can be enclosed in single Bash function as well:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>CHECK_SSL_DAYS=90
+check_ssl() {
+	local host
+	host=$(echo &quot;$SERVICE_URL&quot; | cut -d &#39;/&#39; -f 3)
+	RESULT=&quot;${RESULT}&quot;$&#39;\n&#39;&quot;SSL certificate expiration date: $(
+		exec 2&gt;&amp;1; echo |
+			openssl s_client -servername &quot;$host&quot; -connect &quot;${host}:443&quot; 2&gt;/dev/null |
+			openssl x509 -noout -enddate |
+			cut -d &#39;=&#39; -f 2
+	)&quot;
+	local end_seconds
+	end_seconds=$((&quot;$CHECK_SSL_DAYS&quot; * 24 * 60 * 60))
+	if ! echo |
+			openssl s_client -servername &quot;$host&quot; -connect &quot;${host}:443&quot; 2&gt;/dev/null |
+			openssl x509 -noout -checkend &quot;$end_seconds&quot; &gt;/dev/null; then
+		RESULT=&quot;${RESULT}&quot;$&#39;\n&#39;&quot;Certificate will expire soon!&quot;
+		EXIT_CODE=1
+	fi
+}
+</pre></div>
+</div>
+</section>
+</section>
+<section id="conclusion">
+<h2>Conclusion<a class="headerlink" href="#conclusion" title="Link to this heading">¶</a></h2>
+<p>It took us ~100 lines of Bash to check:</p>
+<ul class="simple">
+<li><p>Service availability via HTTP</p></li>
+<li><p>Service response time</p></li>
+<li><p>Service SSL certificate expiration date</p></li>
+<li><p>Instance memory usage</p></li>
+</ul>
+<p>We can run this script every minute from cron:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="o">*</span> <span class="o">*</span> <span class="o">*</span> <span class="o">*</span> <span class="o">*</span> <span class="o">/</span><span class="n">opt</span><span class="o">/</span><span class="n">low</span><span class="o">-</span><span class="n">effort</span><span class="o">-</span><span class="n">monitoring</span><span class="o">.</span><span class="n">sh</span>
+</pre></div>
+</div>
+<p>Of course it’s not the most beautiful and performance oriented way of monitoring
+website, but it serves the purpose. No special software nor planning is required
+here, so it may be a great ad-hoc solution while you plan long term monitoring
+system like Icinga2, Prometheus or Zabbix.</p>
+<p>Full script can be found <a class="reference internal" href="#/media/low-effort-monitoring.sh"><span class="xref myst">here</span></a>.</p>
+</section>
+</section>
+
+
+            <div class="clearer"></div>
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+  <div>
+    <h3><a href="../index.html">Table of Contents</a></h3>
+    <ul>
+<li><a class="reference internal" href="#">2021-11-18 Low effort website monitoring</a><ul>
+<li><a class="reference internal" href="#requirements">Requirements</a></li>
+<li><a class="reference internal" href="#incremental-development">Incremental development</a><ul>
+<li><a class="reference internal" href="#basic-http-service-check-with-notification">Basic HTTP service check with notification</a></li>
+<li><a class="reference internal" href="#service-is-available-but-does-it-perform-well">Service is available, but does it perform well?</a></li>
+<li><a class="reference internal" href="#what-about-other-metrics">What about other metrics?</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#conclusion">Conclusion</a></li>
+</ul>
+</li>
+</ul>
+
+  </div>
+  <div>
+    <h4>Previous topic</h4>
+    <p class="topless"><a href="2022-04-04.html"
+                          title="previous chapter">2022-04-04 Securing development environment</a></p>
+  </div>
+  <div>
+    <h4>Next topic</h4>
+    <p class="topless"><a href="2019-05-26.html"
+                          title="next chapter">2019-05-26 Advanced curl usage</a></p>
+  </div>
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="../_sources/posts/2021-11-18.md.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<search id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="Related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="2019-05-26.html" title="2019-05-26 Advanced curl usage"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="2022-04-04.html" title="2022-04-04 Securing development environment"
+             >previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../index.html">OK, noted</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">2021-11-18 Low effort website monitoring</a></li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+    &#169; Copyright .
+      Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 8.2.3.
+    </div>
+  </body>
+</html>

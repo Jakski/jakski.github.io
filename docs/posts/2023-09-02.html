@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>2023-09-02 Comparing JSON documents &#8212; OK, noted</title>
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
+    <link rel="stylesheet" type="text/css" href="../_static/classic.css?v=2bf1fcf8" />
+    <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
+    
+    <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="2023-01-03 Error handling in Bash" href="2023-01-03.html" />
+    <link rel="prev" title="2024-03-05 Returning value from Bash functions efficiently" href="2024-03-05.html" /> 
+  </head><body>
+    <div class="related" role="navigation" aria-label="Related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="2023-01-03.html" title="2023-01-03 Error handling in Bash"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="2024-03-05.html" title="2024-03-05 Returning value from Bash functions efficiently"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../index.html">OK, noted</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">2023-09-02 Comparing JSON documents</a></li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <section id="comparing-json-documents">
+<h1>2023-09-02 Comparing JSON documents<a class="headerlink" href="#comparing-json-documents" title="Link to this heading">¶</a></h1>
+<p>JSON became de facto standard for structured documents in modern days. While it
+may not be used everywhere, most of times we’re able to convert a document into
+JSON and use a vast collection of tools to manipulate data this way.</p>
+<section id="what-about-yaml">
+<h2>What about YAML?<a class="headerlink" href="#what-about-yaml" title="Link to this heading">¶</a></h2>
+<p>I’ll focus only on working with JSON, but YAML format is usually preferred to
+represent JSON compatible schemas in more human readable way. Unless YAML
+document uses some user-defined types, we can convert it to JSON e.g. using
+shell function and Python module <code class="docutils literal notranslate"><span class="pre">ruamel.yaml</span></code>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">yaml2json</span> <span class="p">()</span> <span class="p">{</span> <span class="n">python3</span> <span class="o">-</span><span class="n">c</span> <span class="s1">&#39;from ruamel import yaml; import json, sys; json.dump(yaml.safe_load(sys.stdin), sys.stdout)&#39;</span><span class="p">;</span> <span class="p">}</span>
+</pre></div>
+</div>
+</section>
+<section id="simple-delta">
+<h2>Simple delta<a class="headerlink" href="#simple-delta" title="Link to this heading">¶</a></h2>
+<p>That’s the easiest case. Let’s say that our first document looks like this:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;object1&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;key1&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;value1&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;key2&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;value2&quot;</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>and our second object looks like this:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;object1&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;key2&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;value2&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;key1&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;value1&quot;</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>When we try to create a delta normal way we get some misleading information:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>$ diff d1.json d2.json
+3,4c3,4
+&lt;     &quot;key1&quot;: &quot;value1&quot;,
+&lt;     &quot;key2&quot;: &quot;value2&quot;
+---
+&gt;     &quot;key2&quot;: &quot;value2&quot;,
+&gt;     &quot;key1&quot;: &quot;value1&quot;
+</pre></div>
+</div>
+<p>It’s true that these documents differ in key ordering, but that’s not what we
+care about in structured documents. Fortunately <code class="docutils literal notranslate"><span class="pre">jq</span></code> helps here:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>$ diff &lt;(jq --sort-keys . d1.json) &lt;(jq --sort-keys . d2.json)
+$
+</pre></div>
+</div>
+<p>Now we’re comparing actual content, not the formatting of documents.</p>
+</section>
+<section id="documents-with-changes-in-objects-and-arrays">
+<h2>Documents with changes in objects and arrays<a class="headerlink" href="#documents-with-changes-in-objects-and-arrays" title="Link to this heading">¶</a></h2>
+<p>Simple delta will work great for documents where only simple values differ.
+Delta becomes less readable the more complex structures we’re comparing. Let’s
+say our first document is now:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;object1&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;key1&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;value1&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;key2&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;value2&quot;</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;object3&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;key1&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">      </span><span class="s2">&quot;value1&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="s2">&quot;value2&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="p">[</span>
+<span class="w">        </span><span class="p">{</span>
+<span class="w">          </span><span class="nt">&quot;key1&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;value1&quot;</span>
+<span class="w">        </span><span class="p">},</span>
+<span class="w">        </span><span class="p">{</span>
+<span class="w">          </span><span class="nt">&quot;key1&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;value1&quot;</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">      </span><span class="p">]</span>
+<span class="w">    </span><span class="p">]</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>and our second document is:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;object2&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;key1&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;value1&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;key2&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;value2&quot;</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;object3&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;key3&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">      </span><span class="s2">&quot;value3&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="s2">&quot;value5&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="p">[</span>
+<span class="w">        </span><span class="p">{</span>
+<span class="w">          </span><span class="nt">&quot;key1&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;value2&quot;</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">      </span><span class="p">]</span>
+<span class="w">    </span><span class="p">]</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;array1&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="s2">&quot;value1&quot;</span>
+<span class="w">  </span><span class="p">]</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>Using <code class="docutils literal notranslate"><span class="pre">diff</span></code> with <code class="docutils literal notranslate"><span class="pre">jq</span></code> still works, but now delta also contains lines which
+doesn’t introduce any value and are only required to ensure document validity
+like curly opening and closing braces:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>$ diff &lt;(jq --sort-keys . d1.json) &lt;(jq --sort-keys . d2.json)
+2c2,5
+&lt;   &quot;object1&quot;: {
+---
+&gt;   &quot;array1&quot;: [
+&gt;     &quot;value1&quot;
+&gt;   ],
+&gt;   &quot;object2&quot;: {
+7,9c10,12
+&lt;     &quot;key1&quot;: [
+&lt;       &quot;value1&quot;,
+&lt;       &quot;value2&quot;,
+---
+&gt;     &quot;key3&quot;: [
+&gt;       &quot;value3&quot;,
+&gt;       &quot;value5&quot;,
+12,15c15
+&lt;           &quot;key1&quot;: &quot;value1&quot;
+&lt;         },
+&lt;         {
+&lt;           &quot;key1&quot;: &quot;value1&quot;
+---
+&gt;           &quot;key1&quot;: &quot;value2&quot;
+</pre></div>
+</div>
+<section id="converting-json-into-a-flat-form">
+<h3>Converting JSON into a “flat” form<a class="headerlink" href="#converting-json-into-a-flat-form" title="Link to this heading">¶</a></h3>
+<p>In order to focus only on actual differences between documents and not care
+about how they are formatted we will first produce a flat version of JSON where
+each line corresponds to exactly one value. <code class="docutils literal notranslate"><span class="pre">jq</span></code> allows to write longer scripts
+and reference them in invocations. We’re going to use the following:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>paths as $path
+| getpath($path) as $value
+| ($value | type) as $type
+| select(
+  (
+    ($type == &quot;object&quot; and $value != {})
+    or ($type == &quot;array&quot; and $value != [])
+  )
+  | not
+)
+| [([$path[] | tostring] | join(&quot;.&quot;)), $value]
+</pre></div>
+</div>
+<p>It basically traverses all paths in document and outputs their value, unless
+they are non-empty complex types. Let’s have it convert an example document
+like:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;empty_object&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{},</span>
+<span class="w">  </span><span class="nt">&quot;empty_array&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
+<span class="w">  </span><span class="nt">&quot;array&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="s2">&quot;value1&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="s2">&quot;value2&quot;</span>
+<span class="w">  </span><span class="p">],</span>
+<span class="w">  </span><span class="nt">&quot;object&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;key1&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;value1\nvalue1.1&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;key2&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;value2&quot;</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>We will use <code class="docutils literal notranslate"><span class="pre">-c</span></code> option to <code class="docutils literal notranslate"><span class="pre">jq</span></code> in order to ensure that each key-value pair
+actually takes one line:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>$ cat d3.json | jq -cf flat.jq
+[&quot;empty_object&quot;,{}]
+[&quot;empty_array&quot;,[]]
+[&quot;array.0&quot;,&quot;value1&quot;]
+[&quot;array.1&quot;,&quot;value2&quot;]
+[&quot;object.key1&quot;,&quot;value1\nvalue1.1&quot;]
+[&quot;object.key2&quot;,&quot;value2&quot;]
+</pre></div>
+</div>
+<p>Now we can use this <code class="docutils literal notranslate"><span class="pre">jq</span></code> script to compare more complex documents:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>$ diff &lt;(jq -cf flat.jq d1.json | sort) &lt;(jq -cf flat.jq d2.json | sort)
+1,6c1,6
+&lt; [&quot;object1.key1&quot;,&quot;value1&quot;]
+&lt; [&quot;object1.key2&quot;,&quot;value2&quot;]
+&lt; [&quot;object3.key1.0&quot;,&quot;value1&quot;]
+&lt; [&quot;object3.key1.1&quot;,&quot;value2&quot;]
+&lt; [&quot;object3.key1.2.0.key1&quot;,&quot;value1&quot;]
+&lt; [&quot;object3.key1.2.1.key1&quot;,&quot;value1&quot;]
+---
+&gt; [&quot;array1.0&quot;,&quot;value1&quot;]
+&gt; [&quot;object2.key1&quot;,&quot;value1&quot;]
+&gt; [&quot;object2.key2&quot;,&quot;value2&quot;]
+&gt; [&quot;object3.key3.0&quot;,&quot;value3&quot;]
+&gt; [&quot;object3.key3.1&quot;,&quot;value5&quot;]
+&gt; [&quot;object3.key3.2.0.key1&quot;,&quot;value2&quot;]&gt;&gt;
+</pre></div>
+</div>
+</section>
+</section>
+<section id="showing-only-the-common-parts-of-documents">
+<h2>Showing only the common parts of documents<a class="headerlink" href="#showing-only-the-common-parts-of-documents" title="Link to this heading">¶</a></h2>
+<p>Let’s say we have document:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;object1&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;key1&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;value1&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;key2&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;value2.1&quot;</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;array1&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="s2">&quot;value1&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="s2">&quot;value2&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="s2">&quot;value3&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="s2">&quot;value4&quot;</span>
+<span class="w">  </span><span class="p">]</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>and:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;object1&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;key1&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;value1&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;key2&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;value2&quot;</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;array1&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="s2">&quot;value1&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="s2">&quot;value2&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="s2">&quot;value4&quot;</span>
+<span class="w">  </span><span class="p">]</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">comm</span></code> tool will help us here:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>$ comm -1 -2 &lt;(jq -cf flat.jq d1.json | sort) &lt;(jq -cf flat.jq d2.json | sort)
+[&quot;array1.0&quot;,&quot;value1&quot;]
+[&quot;array1.1&quot;,&quot;value2&quot;]
+[&quot;object1.key1&quot;,&quot;value1&quot;]
+</pre></div>
+</div>
+<p>One way to use this technique is, if we have default values files and overrides
+files and want to see which keys are redundant in the latter.</p>
+</section>
+</section>
+
+
+            <div class="clearer"></div>
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+  <div>
+    <h3><a href="../index.html">Table of Contents</a></h3>
+    <ul>
+<li><a class="reference internal" href="#">2023-09-02 Comparing JSON documents</a><ul>
+<li><a class="reference internal" href="#what-about-yaml">What about YAML?</a></li>
+<li><a class="reference internal" href="#simple-delta">Simple delta</a></li>
+<li><a class="reference internal" href="#documents-with-changes-in-objects-and-arrays">Documents with changes in objects and arrays</a><ul>
+<li><a class="reference internal" href="#converting-json-into-a-flat-form">Converting JSON into a “flat” form</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#showing-only-the-common-parts-of-documents">Showing only the common parts of documents</a></li>
+</ul>
+</li>
+</ul>
+
+  </div>
+  <div>
+    <h4>Previous topic</h4>
+    <p class="topless"><a href="2024-03-05.html"
+                          title="previous chapter">2024-03-05 Returning value from Bash functions efficiently</a></p>
+  </div>
+  <div>
+    <h4>Next topic</h4>
+    <p class="topless"><a href="2023-01-03.html"
+                          title="next chapter">2023-01-03 Error handling in Bash</a></p>
+  </div>
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="../_sources/posts/2023-09-02.md.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<search id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="Related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="2023-01-03.html" title="2023-01-03 Error handling in Bash"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="2024-03-05.html" title="2024-03-05 Returning value from Bash functions efficiently"
+             >previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../index.html">OK, noted</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">2023-09-02 Comparing JSON documents</a></li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+    &#169; Copyright .
+      Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 8.2.3.
+    </div>
+  </body>
+</html>

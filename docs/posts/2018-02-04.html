@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>2018-02-04 Upgrading kernel on OVH VPS &#8212; OK, noted</title>
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
+    <link rel="stylesheet" type="text/css" href="../_static/classic.css?v=2bf1fcf8" />
+    <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
+    
+    <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="prev" title="2018-06-14 Unprivileged QEMU" href="2018-06-14.html" /> 
+  </head><body>
+    <div class="related" role="navigation" aria-label="Related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="2018-06-14.html" title="2018-06-14 Unprivileged QEMU"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../index.html">OK, noted</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">2018-02-04 Upgrading kernel on OVH VPS</a></li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <section id="upgrading-kernel-on-ovh-vps">
+<h1>2018-02-04 Upgrading kernel on OVH VPS<a class="headerlink" href="#upgrading-kernel-on-ovh-vps" title="Link to this heading">¶</a></h1>
+<p>Recently I noticed that despite upgrading kernel on my OVH VPS it’s still using
+old version. After some research I discovered that OVH base image(Debian 8, VPS
+2016 SSD 1) uses extlinux to manage master boot record. While I was used to self
+updating GRUB configuration, extlinux didn’t point to new kernel automatically
+after upgrade. I found it’s configuration in
+<em>/boot/extlinux/extlinux.conf</em>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">default</span> <span class="n">linux</span>
+<span class="n">timeout</span> <span class="mi">1</span>
+<span class="n">label</span> <span class="n">linux</span>
+<span class="n">kernel</span> <span class="n">boot</span><span class="o">/</span><span class="n">vmlinuz</span><span class="o">-</span><span class="mf">3.16.0</span><span class="o">-</span><span class="mi">4</span><span class="o">-</span><span class="n">amd64</span>
+<span class="n">append</span> <span class="n">initrd</span><span class="o">=</span><span class="n">boot</span><span class="o">/</span><span class="n">initrd</span><span class="o">.</span><span class="n">img</span><span class="o">-</span><span class="mf">3.16.0</span><span class="o">-</span><span class="mi">4</span><span class="o">-</span><span class="n">amd64</span> <span class="n">root</span><span class="o">=/</span><span class="n">dev</span><span class="o">/</span><span class="n">vda1</span> <span class="n">console</span><span class="o">=</span><span class="n">tty0</span>
+<span class="n">console</span><span class="o">=</span><span class="n">ttyS0</span><span class="p">,</span><span class="mi">115200</span> <span class="n">ro</span> <span class="n">quiet</span>
+</pre></div>
+</div>
+<p>changed paths to initial RAM disk and Linux image:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">default</span> <span class="n">linux</span>
+<span class="n">timeout</span> <span class="mi">1</span>
+<span class="n">label</span> <span class="n">linux</span>
+<span class="n">kernel</span> <span class="o">../</span><span class="n">vmlinuz</span><span class="o">-</span><span class="mf">4.9.0</span><span class="o">-</span><span class="mi">8</span><span class="o">-</span><span class="n">amd64</span>
+<span class="n">append</span> <span class="n">initrd</span><span class="o">=../</span><span class="n">initrd</span><span class="o">.</span><span class="n">img</span><span class="o">-</span><span class="mf">4.9.0</span><span class="o">-</span><span class="mi">8</span><span class="o">-</span><span class="n">amd64</span> <span class="n">root</span><span class="o">=/</span><span class="n">dev</span><span class="o">/</span><span class="n">vda1</span> <span class="n">console</span><span class="o">=</span><span class="n">tty0</span>
+<span class="n">console</span><span class="o">=</span><span class="n">ttyS0</span><span class="p">,</span><span class="mi">115200</span> <span class="n">ro</span> <span class="n">quiet</span>
+</pre></div>
+</div>
+<p>and updated extlinux with:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>$ extlinux --install /boot/extlinux
+</pre></div>
+</div>
+<p>After reboot extlinux loaded fresh kernel.</p>
+</section>
+
+
+            <div class="clearer"></div>
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+  <div>
+    <h4>Previous topic</h4>
+    <p class="topless"><a href="2018-06-14.html"
+                          title="previous chapter">2018-06-14 Unprivileged QEMU</a></p>
+  </div>
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="../_sources/posts/2018-02-04.md.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<search id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="Related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="2018-06-14.html" title="2018-06-14 Unprivileged QEMU"
+             >previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../index.html">OK, noted</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">2018-02-04 Upgrading kernel on OVH VPS</a></li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+    &#169; Copyright .
+      Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 8.2.3.
+    </div>
+  </body>
+</html>

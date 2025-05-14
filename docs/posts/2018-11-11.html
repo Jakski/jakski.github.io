@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>2018-11-11 Debugging Go in Kubernetes &#8212; OK, noted</title>
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
+    <link rel="stylesheet" type="text/css" href="../_static/classic.css?v=2bf1fcf8" />
+    <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
+    
+    <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="2018-07-18 Debugging Docker container" href="2018-07-18.html" />
+    <link rel="prev" title="2019-02-09 Neovim error: Channel doesn’t exist" href="2019-02-09.html" /> 
+  </head><body>
+    <div class="related" role="navigation" aria-label="Related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="2018-07-18.html" title="2018-07-18 Debugging Docker container"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="2019-02-09.html" title="2019-02-09 Neovim error: Channel doesn’t exist"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../index.html">OK, noted</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">2018-11-11 Debugging Go in Kubernetes</a></li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <section id="debugging-go-in-kubernetes">
+<h1>2018-11-11 Debugging Go in Kubernetes<a class="headerlink" href="#debugging-go-in-kubernetes" title="Link to this heading">¶</a></h1>
+<p>Before we get into attaching debugger to Go application running on Kubernetes
+cluster, let’s list a few debugging scenarios you might encounter:</p>
+<ul>
+<li><p>debugging running application with stripped symbols(<em>go
+build -ldflags=’-s -w’</em>) - probably the hardest scenario. To start debugging
+session you will need to get debugging symbols package for used build ID.</p></li>
+<li><p>debugging running application with optimizations applied(<em>go build</em>) - while you will
+be able to launch debugger session on such process, you may encounter problems
+with inspecting application state, e.g.:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">(</span><span class="n">dlv</span><span class="p">)</span> <span class="n">args</span>
+<span class="n">r</span> <span class="o">=</span> <span class="p">(</span><span class="n">unreadable</span> <span class="n">empty</span> <span class="n">OP</span> <span class="n">stack</span><span class="p">)</span>
+<span class="n">w</span> <span class="o">=</span> <span class="n">net</span><span class="o">/</span><span class="n">http</span><span class="o">.</span><span class="n">ResponseWriter</span><span class="p">(</span><span class="o">*</span><span class="n">net</span><span class="o">/</span><span class="n">http</span><span class="o">.</span><span class="n">response</span><span class="p">)</span> <span class="mh">0xbeef0008</span>
+</pre></div>
+</div>
+</li>
+<li><p>debugging running application with debugging symbols and without optimizations(<em>go
+build -gcflags=’all=-N -l’</em>) - the easiest case, where you have all required
+information in format understandable by debugger</p></li>
+</ul>
+<p>I’m going to focus only on the last scenario using
+<a class="reference external" href="https://github.com/derekparker/delve">Delve</a>.</p>
+<section id="example-application">
+<h2>Example application<a class="headerlink" href="#example-application" title="Link to this heading">¶</a></h2>
+<p>Let’s start with <em>hello world</em> HTTP server application:</p>
+<p><em>main.go</em>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">package</span> <span class="n">main</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="p">(</span>
+  <span class="s2">&quot;net/http&quot;</span>
+  <span class="s2">&quot;fmt&quot;</span>
+<span class="p">)</span>
+
+<span class="n">func</span> <span class="n">handleSlash</span><span class="p">(</span><span class="n">w</span> <span class="n">http</span><span class="o">.</span><span class="n">ResponseWriter</span><span class="p">,</span> <span class="n">r</span> <span class="o">*</span><span class="n">http</span><span class="o">.</span><span class="n">Request</span><span class="p">)</span> <span class="p">{</span>
+  <span class="n">fmt</span><span class="o">.</span><span class="n">Fprintf</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="s2">&quot;Hello </span><span class="si">%s</span><span class="s2">!</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">r</span><span class="o">.</span><span class="n">Host</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="n">func</span> <span class="n">main</span><span class="p">()</span> <span class="p">{</span>
+  <span class="n">http</span><span class="o">.</span><span class="n">HandleFunc</span><span class="p">(</span><span class="s2">&quot;/&quot;</span><span class="p">,</span> <span class="n">handleSlash</span><span class="p">)</span>
+  <span class="n">http</span><span class="o">.</span><span class="n">ListenAndServe</span><span class="p">(</span><span class="s2">&quot;:8080&quot;</span><span class="p">,</span> <span class="n">nil</span><span class="p">)</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><em>Dockerfile</em>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">FROM</span> <span class="n">scratch</span>
+<span class="n">COPY</span> <span class="n">hello</span><span class="o">-</span><span class="n">world</span> <span class="o">/</span>
+<span class="n">ENTRYPOINT</span> <span class="p">[</span><span class="s2">&quot;/hello-world&quot;</span><span class="p">]</span>
+</pre></div>
+</div>
+<p><em>deployment.yaml</em>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">apiVersion</span><span class="p">:</span> <span class="n">apps</span><span class="o">/</span><span class="n">v1</span>
+<span class="n">kind</span><span class="p">:</span> <span class="n">Deployment</span>
+<span class="n">metadata</span><span class="p">:</span>
+ <span class="n">name</span><span class="p">:</span> <span class="n">hello</span><span class="o">-</span><span class="n">world</span>
+ <span class="n">labels</span><span class="p">:</span>
+   <span class="n">app</span><span class="p">:</span> <span class="n">hw</span>
+<span class="n">spec</span><span class="p">:</span>
+ <span class="n">replicas</span><span class="p">:</span> <span class="mi">1</span>
+ <span class="n">selector</span><span class="p">:</span>
+   <span class="n">matchLabels</span><span class="p">:</span>
+     <span class="n">app</span><span class="p">:</span> <span class="n">hw</span>
+ <span class="n">template</span><span class="p">:</span>
+   <span class="n">metadata</span><span class="p">:</span>
+     <span class="n">labels</span><span class="p">:</span>
+       <span class="n">app</span><span class="p">:</span> <span class="n">hw</span>
+ <span class="n">spec</span><span class="p">:</span>
+   <span class="n">imagePullSecrets</span><span class="p">:</span>
+     <span class="o">-</span> <span class="n">name</span><span class="p">:</span> <span class="n">registry</span><span class="o">.</span><span class="n">local</span>
+   <span class="n">containers</span><span class="p">:</span>
+     <span class="o">-</span> <span class="n">name</span><span class="p">:</span> <span class="n">hw</span>
+       <span class="n">image</span><span class="p">:</span> <span class="n">registry</span><span class="o">.</span><span class="n">local</span><span class="o">/</span><span class="n">hw</span><span class="p">:</span><span class="n">latest</span>
+       <span class="n">imagePullPolicy</span><span class="p">:</span> <span class="n">Always</span>
+</pre></div>
+</div>
+</section>
+<section id="deployment">
+<h2>Deployment<a class="headerlink" href="#deployment" title="Link to this heading">¶</a></h2>
+<p>We will need to build application without optimizations:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>$&gt; go build -gcflags=&#39;all=-N -l&#39;
+$&gt; docker build -t registry.local/hw:latest .
+$&gt; docker push registry.local/hw:latest
+</pre></div>
+</div>
+<blockquote>
+<div><p>Non-optimized builds are actually used internally by <code class="docutils literal notranslate"><span class="pre">Delve</span></code>, if you invoke its
+<em>debug</em> subcommand.</p>
+</div></blockquote>
+<p>Now let’s create Kubernetes deployment of our application:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>$&gt; kubectl apply -f deployment.yaml
+</pre></div>
+</div>
+</section>
+<section id="attaching-debugger">
+<h2>Attaching debugger<a class="headerlink" href="#attaching-debugger" title="Link to this heading">¶</a></h2>
+<p>We will need separate pod for <em>Delve</em> located on the same node as out
+application:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>$&gt; kubectl get pod hello-world-77457544f4-fglbh -ojsonpath=&#39;{.spec.nodeName}{&quot;\n&quot;}&#39;
+minikube
+</pre></div>
+</div>
+<p><em>pod.yaml</em>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">apiVersion</span><span class="p">:</span> <span class="n">v1</span>
+<span class="n">kind</span><span class="p">:</span> <span class="n">Pod</span>
+<span class="n">metadata</span><span class="p">:</span>
+ <span class="n">name</span><span class="p">:</span> <span class="n">debug</span>
+<span class="n">spec</span><span class="p">:</span>
+ <span class="n">hostPID</span><span class="p">:</span> <span class="n">true</span>
+ <span class="n">containers</span><span class="p">:</span>
+   <span class="o">-</span> <span class="n">name</span><span class="p">:</span> <span class="n">delve</span>
+     <span class="n">image</span><span class="p">:</span> <span class="n">golang</span><span class="p">:</span><span class="mf">1.11</span><span class="o">-</span><span class="n">alpine</span>
+     <span class="n">command</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;/bin/cat&quot;</span><span class="p">]</span>
+     <span class="n">tty</span><span class="p">:</span> <span class="n">true</span>
+ <span class="n">nodeSelector</span><span class="p">:</span>
+   <span class="n">kubernetes</span><span class="o">.</span><span class="n">io</span><span class="o">/</span><span class="n">hostname</span><span class="p">:</span> <span class="n">minikube</span>
+</pre></div>
+</div>
+<blockquote>
+<div><p>Some clusters policies might prevent you from creating container in
+host PID namespace for security.</p>
+</div></blockquote>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>$&gt; kubectl apply -f pod.yaml
+</pre></div>
+</div>
+<p>We invoke <em>cat</em> just to sustain pod, so we can enter it with <em>exec</em>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>$&gt; kubectl exec -it debug sh
+</pre></div>
+</div>
+<p>We will have to locate our application’s process and attach <em>Delve</em> to it. Let’s
+find out container ID of <em>hello-world</em>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>$&gt; kubectl get pod hello-world-77457544f4-fglbh \
+   -ojsonpath=&#39;{.status.containerStatuses[?(@.name==&quot;hw&quot;)].containerID}{&quot;\n&quot;}&#39; \
+   | cut -d / -f 3
+b686d81723e3c714ddb08fe398dafd62d4456f0211991658b27be1d41d39b0b7
+</pre></div>
+</div>
+<section id="inside-debugging-pod">
+<h3>Inside debugging pod<a class="headerlink" href="#inside-debugging-pod" title="Link to this heading">¶</a></h3>
+<p>With <em>hostPID: true</em> we have full access to every process on node, even if it’s
+not related to current pod. Docker spawns shim with ID in process name for each
+container. Busybox version of <em>ps</em> lacks ability to list processes in tree
+structure, so we will need to install <em>procps</em> and search for <em>hello-world</em>
+application process.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>$&gt; apk update
+$&gt; apk add procps
+$&gt; ps -eo pid,cmd --forest | grep -A 1 b686d81723e3c714ddb08fe398dafd62d4456f0211991658b27be1d41d39b0b7
+7803      \_ docker-containerd-shim -namespace moby -workdir /var/lib/docker/containerd/daemon/io.containerd.runtime.v1.linux/moby/b686d81723e3c714ddb08fe398dafd62d4456f0211991658b27be1d41d39b0b7 -address /var/run/docker/containerd/docker-containerd.sock -containerd-binary /usr/bin/docker-containerd -runtime-root /var/run/docker/runtime-runc
+7820      |   \_ /hello-world
+</pre></div>
+</div>
+<p>Now we know that our application is running with process ID 7820.
+Attaching to it will a matter of installing <em>Delve</em> and writing script to
+automatically start tracing:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>$&gt; apk add git
+$&gt; go get -u github.com/derekparker/delve/cmd/dlv
+$&gt; cat &gt; trace.dlv
+trace handleSlash main.go:10
+on handleSlash print w.req.RemoteAddr
+continue
+$&gt; dlv attach 7820 --init trace.dlv
+Type &#39;help&#39; for list of commands.
+Tracepoint handleSlash set at 0x6e826d for main.handleSlash()
+ /home/jakub/dev/hello-world/main.go:10
+ &gt; [handleSlash] main.handleSlash() /home/jakub/dev/hello-world/main.go:10 (hits
+ &gt; goroutine(35):1 total:1) (PC: 0x6e826d)
+     data.req.RemoteAddr: &quot;127.0.0.1:34868&quot;
+</pre></div>
+</div>
+<p>Above configuration will let us display source port of every connection handled
+by <em>hello-world</em> application. It’s not really useful, but shows what you can
+achieve with <em>Delve</em>.</p>
+</section>
+</section>
+<section id="security-considerations">
+<h2>Security considerations<a class="headerlink" href="#security-considerations" title="Link to this heading">¶</a></h2>
+<p>Method described above should be used only in emergency or development
+environments. It’s quite easy to:</p>
+<ul class="simple">
+<li><p>accidentally break Kubernetes node by messing with it’s processes</p></li>
+<li><p>break inspected process; <em>Delve</em> may noticeably slow-down process, causing
+timeouts</p></li>
+<li><p>affect other pods running on node</p></li>
+</ul>
+</section>
+</section>
+
+
+            <div class="clearer"></div>
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+  <div>
+    <h3><a href="../index.html">Table of Contents</a></h3>
+    <ul>
+<li><a class="reference internal" href="#">2018-11-11 Debugging Go in Kubernetes</a><ul>
+<li><a class="reference internal" href="#example-application">Example application</a></li>
+<li><a class="reference internal" href="#deployment">Deployment</a></li>
+<li><a class="reference internal" href="#attaching-debugger">Attaching debugger</a><ul>
+<li><a class="reference internal" href="#inside-debugging-pod">Inside debugging pod</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#security-considerations">Security considerations</a></li>
+</ul>
+</li>
+</ul>
+
+  </div>
+  <div>
+    <h4>Previous topic</h4>
+    <p class="topless"><a href="2019-02-09.html"
+                          title="previous chapter">2019-02-09 Neovim error: Channel doesn’t exist</a></p>
+  </div>
+  <div>
+    <h4>Next topic</h4>
+    <p class="topless"><a href="2018-07-18.html"
+                          title="next chapter">2018-07-18 Debugging Docker container</a></p>
+  </div>
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="../_sources/posts/2018-11-11.md.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<search id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="Related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="2018-07-18.html" title="2018-07-18 Debugging Docker container"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="2019-02-09.html" title="2019-02-09 Neovim error: Channel doesn’t exist"
+             >previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../index.html">OK, noted</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">2018-11-11 Debugging Go in Kubernetes</a></li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+    &#169; Copyright .
+      Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 8.2.3.
+    </div>
+  </body>
+</html>

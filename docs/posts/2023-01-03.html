@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>2023-01-03 Error handling in Bash &#8212; OK, noted</title>
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
+    <link rel="stylesheet" type="text/css" href="../_static/classic.css?v=2bf1fcf8" />
+    <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
+    
+    <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="2022-08-27 Virtual machine as a development environment" href="2022-08-27.html" />
+    <link rel="prev" title="2023-09-02 Comparing JSON documents" href="2023-09-02.html" /> 
+  </head><body>
+    <div class="related" role="navigation" aria-label="Related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="2022-08-27.html" title="2022-08-27 Virtual machine as a development environment"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="2023-09-02.html" title="2023-09-02 Comparing JSON documents"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../index.html">OK, noted</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">2023-01-03 Error handling in Bash</a></li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <section id="error-handling-in-bash">
+<h1>2023-01-03 Error handling in Bash<a class="headerlink" href="#error-handling-in-bash" title="Link to this heading">¶</a></h1>
+<p>Undesired behaviour - an error, can manifest in various ways. In most high-level
+programming languages errors are represented as dedicated objects, allowing to
+handle them without interrupting program execution. They usually require
+developer to explicitly mark bad program flows by throwing or raising problem
+description. Bash don’t provide any special syntax for this. Instead it allows
+to hook custom actions when non-zero exit code from command occurs. It’s not
+universally treated as an error, since some applications use more than one exit
+code to signal success. Yet Bash contains some builtin commands and options named
+after <em>error</em> for handling such cases.</p>
+<section id="unofficial-strict-mode">
+<h2>Unofficial strict mode<a class="headerlink" href="#unofficial-strict-mode" title="Link to this heading">¶</a></h2>
+<p>So called <em>unofficial strict mode</em> consist of the following options:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="nb">set</span> <span class="o">-</span><span class="n">o</span> <span class="n">errexit</span>
+<span class="nb">set</span> <span class="o">-</span><span class="n">o</span> <span class="n">nounset</span>
+<span class="nb">set</span> <span class="o">-</span><span class="n">o</span> <span class="n">pipefail</span>
+</pre></div>
+</div>
+<p>and is usually shortened to <code class="docutils literal notranslate"><span class="pre">set</span> <span class="pre">-euo</span> <span class="pre">pipefail</span></code>. It’s probably the easiest for
+starter, but it doesn’t provide much information about error when it actually
+happens.</p>
+<blockquote>
+<div><p><strong>NOTE</strong>: Even with above flags Bash will ignore some problems like non-zero
+exit code from subshell invoked in builtin command invocation. It’s the best
+to always check scripts additionally with tools like
+<a class="reference external" href="https://www.shellcheck.net/">Shellcheck</a> and review <a class="reference external" href="https://mywiki.wooledge.org/BashPitfalls">Bash Pitfalls
+wiki</a>.</p>
+</div></blockquote>
+</section>
+<section id="using-traps">
+<h2>Using traps<a class="headerlink" href="#using-traps" title="Link to this heading">¶</a></h2>
+<p>When everything else fails, script can be always launched with <code class="docutils literal notranslate"><span class="pre">bash</span> <span class="pre">-x</span></code> or <code class="docutils literal notranslate"><span class="pre">set</span> <span class="pre">-o</span> <span class="pre">xtrace</span></code>, but it can be overkill for bigger solutions and might reveal
+confidential data from variables. Another approach requires to define trap
+functions. They act as hooks and run only on POSIX signals or when some specific
+condition is met. See example with <code class="docutils literal notranslate"><span class="pre">ERR</span></code> trap signal below:</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span><span class="c1">##!/usr/bin/env bash</span>
+
+<span class="nb">set</span><span class="w"> </span>-euo<span class="w"> </span>pipefail
+
+on_error<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+<span class="w">	</span><span class="nb">declare</span><span class="w"> </span><span class="nv">exit_code</span><span class="o">=</span><span class="nv">$?</span>
+<span class="w">	</span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;Something went wrong!&quot;</span><span class="w"> </span>&gt;<span class="p">&amp;</span><span class="m">2</span>
+<span class="w">	</span><span class="nb">exit</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$exit_code</span><span class="s2">&quot;</span>
+<span class="o">}</span>
+
+<span class="nb">trap</span><span class="w"> </span>on_error<span class="w"> </span>ERR
+
+ls<span class="w"> </span>/nonexistent
+</pre></div>
+</div>
+<p>Upon execution it prints:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>ls: cannot access &#39;/nonexistent&#39;: No such file or directory
+Something went wrong!
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">ls</span></code> might not be the best example here, since it describes what went wrong by
+itself, but imagine checking for TCP port availability with OpenBSD <code class="docutils literal notranslate"><span class="pre">netcat</span></code>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="c1"># ...</span>
+
+<span class="n">nc</span> <span class="o">-</span><span class="n">zw</span> <span class="mi">3</span> <span class="mf">127.0.0.1</span> <span class="mi">22</span>
+</pre></div>
+</div>
+<p>We wouldn’t know that there was error, unless we printed last exit code <code class="docutils literal notranslate"><span class="pre">echo</span> <span class="pre">$?</span></code>. With <code class="docutils literal notranslate"><span class="pre">ERR</span></code> trap useful message appears without any further interaction and
+program stops, if we also use <code class="docutils literal notranslate"><span class="pre">errexit</span></code>.</p>
+<p>There’s edge case in above solution when we use functions. They don’t inherit
+<code class="docutils literal notranslate"><span class="pre">ERR</span></code> trap, unless we use <code class="docutils literal notranslate"><span class="pre">errtrace</span></code> option. Now strict mode looks like this
+<code class="docutils literal notranslate"><span class="pre">set</span> <span class="pre">-eEuo</span> <span class="pre">pipefail</span></code>.</p>
+<p>It’s usually enough for small scripts, but we have to guess why program
+stopped, if error can appear in multiple places. <code class="docutils literal notranslate"><span class="pre">BASH_COMMAND</span></code> can be used to
+show exactly which command caused script to fail:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>#!/usr/bin/env bash
+
+set -eEuo pipefail
+
+on_error() {
+	declare \
+		cmd=$BASH_COMMAND \
+		exit_code=$?
+	echo &quot;Failing with exit code ${exit_code} at ${*} in command: ${cmd}&quot; &gt;&amp;2
+	exit &quot;$exit_code&quot;
+}
+
+trap on_error ERR
+
+function_a() {
+	nc -zw 3 127.0.0.1 22
+}
+
+function_b() {
+	function_a
+}
+
+function_b
+</pre></div>
+</div>
+<p>It save us some time when error occurs without <code class="docutils literal notranslate"><span class="pre">xtrace</span></code>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">Failing</span> <span class="k">with</span> <span class="n">exit</span> <span class="n">code</span> <span class="mi">1</span> <span class="n">at</span>  <span class="ow">in</span> <span class="n">command</span><span class="p">:</span> <span class="n">nc</span> <span class="o">-</span><span class="n">zw</span> <span class="mi">3</span> <span class="mf">127.0.0.1</span> <span class="mi">22</span>
+</pre></div>
+</div>
+</section>
+<section id="printing-call-traces">
+<h2>Printing call traces<a class="headerlink" href="#printing-call-traces" title="Link to this heading">¶</a></h2>
+<p>Additionally Bash provides some diagnostic variables defined as arrays, which
+can be used to locate where error happened:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">BASH_SOURCE</span></code> - Source file of currently executed function. It’s not always
+available, since scripts can be sourced from arbitrary file descriptors.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">FUNCNAME</span></code> - Currently executed function name.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">BASH_LINENO</span></code> - Line number from source file.</p></li>
+</ul>
+<p>They can be iterated to generate a call trace:</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span><span class="c1">##!/usr/bin/env bash</span>
+
+<span class="nb">set</span><span class="w"> </span>-eEuo<span class="w"> </span>pipefail
+
+on_error<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+<span class="w">	</span><span class="nb">declare</span><span class="w"> </span><span class="se">\</span>
+<span class="w">		</span><span class="nv">cmd</span><span class="o">=</span><span class="nv">$BASH_COMMAND</span><span class="w"> </span><span class="se">\</span>
+<span class="w">		</span><span class="nv">exit_code</span><span class="o">=</span><span class="nv">$?</span><span class="w"> </span><span class="se">\</span>
+<span class="w">		</span><span class="nv">i</span><span class="o">=</span><span class="m">0</span><span class="w"> </span><span class="se">\</span>
+<span class="w">		</span><span class="nv">end</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">${#</span><span class="nv">FUNCNAME</span><span class="p">[@]</span><span class="si">}</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">		</span>next
+<span class="w">	</span><span class="nv">end</span><span class="o">=</span><span class="k">$((</span><span class="nv">end</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="m">1</span><span class="k">))</span>
+<span class="w">	</span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;Failing with exit code </span><span class="si">${</span><span class="nv">exit_code</span><span class="si">}</span><span class="s2"> in command: </span><span class="si">${</span><span class="nv">cmd</span><span class="si">}</span><span class="s2">&quot;</span><span class="w"> </span>&gt;<span class="p">&amp;</span><span class="m">2</span>
+<span class="w">	</span><span class="k">while</span><span class="w"> </span><span class="o">[</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$i</span><span class="s2">&quot;</span><span class="w"> </span>!<span class="o">=</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$end</span><span class="s2">&quot;</span><span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="k">do</span>
+<span class="w">		</span><span class="nv">next</span><span class="o">=</span><span class="k">$((</span><span class="nv">i</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="m">1</span><span class="k">))</span>
+<span class="w">		</span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;	</span><span class="si">${</span><span class="nv">BASH_SOURCE</span><span class="p">[</span><span class="s2">&quot;</span><span class="nv">$next</span><span class="s2">&quot;</span><span class="p">]</span><span class="k">:-</span><span class="si">}</span><span class="s2">:</span><span class="si">${</span><span class="nv">BASH_LINENO</span><span class="p">[</span><span class="s2">&quot;</span><span class="nv">$i</span><span class="s2">&quot;</span><span class="p">]</span><span class="si">}</span><span class="s2">:</span><span class="si">${</span><span class="nv">FUNCNAME</span><span class="p">[</span><span class="s2">&quot;</span><span class="nv">$next</span><span class="s2">&quot;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="w"> </span>&gt;<span class="p">&amp;</span><span class="m">2</span>
+<span class="w">		</span><span class="nv">i</span><span class="o">=</span><span class="nv">$next</span>
+<span class="w">	</span><span class="k">done</span>
+<span class="w">	</span><span class="nb">exit</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$exit_code</span><span class="s2">&quot;</span>
+<span class="o">}</span>
+
+<span class="nb">trap</span><span class="w"> </span>on_error<span class="w"> </span>ERR
+<span class="c1"># Source wrapped_ls function</span>
+<span class="nb">source</span><span class="w"> </span>./t2.sh
+
+function_a<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+<span class="w">	</span>nc<span class="w"> </span>-zw<span class="w"> </span><span class="m">3</span><span class="w"> </span><span class="m">127</span>.0.0.1<span class="w"> </span><span class="m">22</span>
+<span class="o">}</span>
+
+function_b<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+<span class="w">	</span>wrapped_ls<span class="w"> </span>/asdf
+<span class="o">}</span>
+
+function_b
+</pre></div>
+</div>
+<p>Running prints:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>$ ./t.sh
+ls: cannot access &#39;/asdf&#39;: No such file or directory
+Failing with exit code 2 in command: ls &quot;$1&quot;
+  ./t2.sh:2:wrapped_ls
+  ./t.sh:31:function_b
+  ./t.sh:34:main
+</pre></div>
+</div>
+<p>There’s one problem with this approach. Bash allows to throw custom error
+message, when variable is null or not set with syntax <code class="docutils literal notranslate"><span class="pre">${varname:?&quot;message&quot;}</span></code>.
+It does end program, but it doesn’t trigger <code class="docutils literal notranslate"><span class="pre">ERR</span></code> trap. To handle this properly
+we need to replace <code class="docutils literal notranslate"><span class="pre">ERR</span></code> trap with <code class="docutils literal notranslate"><span class="pre">EXIT</span></code>. It runs unconditionally when script
+ends, so exit code needs to be additionally checked. We no longer need
+<code class="docutils literal notranslate"><span class="pre">errtrace</span></code>(<code class="docutils literal notranslate"><span class="pre">-E</span></code>) option in this case.</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span><span class="ch">#!/usr/bin/env bash</span>
+
+<span class="nb">set</span><span class="w"> </span>-euo<span class="w"> </span>pipefail
+
+on_exit<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+<span class="w">	</span><span class="nb">declare</span><span class="w"> </span><span class="se">\</span>
+<span class="w">		</span><span class="nv">cmd</span><span class="o">=</span><span class="nv">$BASH_COMMAND</span><span class="w"> </span><span class="se">\</span>
+<span class="w">		</span><span class="nv">exit_code</span><span class="o">=</span><span class="nv">$?</span><span class="w"> </span><span class="se">\</span>
+<span class="w">		</span><span class="nv">i</span><span class="o">=</span><span class="m">0</span><span class="w"> </span><span class="se">\</span>
+<span class="w">		</span><span class="nv">end</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">${#</span><span class="nv">FUNCNAME</span><span class="p">[@]</span><span class="si">}</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">		</span>next
+<span class="w">	</span><span class="k">if</span><span class="w"> </span><span class="o">[</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$exit_code</span><span class="s2">&quot;</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<span class="w">		</span><span class="k">return</span><span class="w"> </span><span class="m">0</span>
+<span class="w">	</span><span class="k">fi</span>
+<span class="w">	</span><span class="nv">end</span><span class="o">=</span><span class="k">$((</span><span class="nv">end</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="m">1</span><span class="k">))</span>
+<span class="w">	</span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;Failing with exit code </span><span class="si">${</span><span class="nv">exit_code</span><span class="si">}</span><span class="s2"> in command: </span><span class="si">${</span><span class="nv">cmd</span><span class="si">}</span><span class="s2">&quot;</span><span class="w"> </span>&gt;<span class="p">&amp;</span><span class="m">2</span>
+<span class="w">	</span><span class="k">while</span><span class="w"> </span><span class="o">[</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$i</span><span class="s2">&quot;</span><span class="w"> </span>!<span class="o">=</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$end</span><span class="s2">&quot;</span><span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="k">do</span>
+<span class="w">		</span><span class="nv">next</span><span class="o">=</span><span class="k">$((</span><span class="nv">i</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="m">1</span><span class="k">))</span>
+<span class="w">		</span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;	</span><span class="si">${</span><span class="nv">BASH_SOURCE</span><span class="p">[</span><span class="s2">&quot;</span><span class="nv">$next</span><span class="s2">&quot;</span><span class="p">]</span><span class="k">:-</span><span class="si">}</span><span class="s2">:</span><span class="si">${</span><span class="nv">BASH_LINENO</span><span class="p">[</span><span class="s2">&quot;</span><span class="nv">$i</span><span class="s2">&quot;</span><span class="p">]</span><span class="si">}</span><span class="s2">:</span><span class="si">${</span><span class="nv">FUNCNAME</span><span class="p">[</span><span class="s2">&quot;</span><span class="nv">$next</span><span class="s2">&quot;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="w"> </span>&gt;<span class="p">&amp;</span><span class="m">2</span>
+<span class="w">		</span><span class="nv">i</span><span class="o">=</span><span class="nv">$next</span>
+<span class="w">	</span><span class="k">done</span>
+<span class="w">	</span><span class="nb">exit</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$exit_code</span><span class="s2">&quot;</span>
+<span class="o">}</span>
+
+<span class="nb">trap</span><span class="w"> </span>on_exit<span class="w"> </span>EXIT
+<span class="c1"># Source wrapped_ls function</span>
+<span class="nb">source</span><span class="w"> </span>./t2.sh
+
+function_a<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+<span class="w">	</span>nc<span class="w"> </span>-zw<span class="w"> </span><span class="m">3</span><span class="w"> </span><span class="m">127</span>.0.0.1<span class="w"> </span><span class="m">22</span>
+<span class="o">}</span>
+
+function_b<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+<span class="w">	</span><span class="c1"># Force exit with undefined variable.</span>
+<span class="w">	</span>:<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">dgfdfg</span><span class="p">:?</span><span class="si">}</span><span class="s2">&quot;</span>
+<span class="w">	</span>wrapped_ls<span class="w"> </span>/asdf
+<span class="o">}</span>
+
+function_b
+</pre></div>
+</div>
+</section>
+<section id="handling-non-zero-exit-codes">
+<h2>Handling non-zero exit codes<a class="headerlink" href="#handling-non-zero-exit-codes" title="Link to this heading">¶</a></h2>
+<p>It’s usually not the issue, since commands used in conditionals are excluded
+from <code class="docutils literal notranslate"><span class="pre">errexit</span></code> and <code class="docutils literal notranslate"><span class="pre">ERR</span></code> trap. Difficult cases are when we want to use functions
+or pipe commands.</p>
+<section id="in-functions">
+<h3>In functions<a class="headerlink" href="#in-functions" title="Link to this heading">¶</a></h3>
+<p>It’s tempting to use function directly in conditional. Both full syntax and
+<code class="docutils literal notranslate"><span class="pre">&amp;&amp;</span></code>/<code class="docutils literal notranslate"><span class="pre">||</span></code> turn off <code class="docutils literal notranslate"><span class="pre">errexit</span></code> and <code class="docutils literal notranslate"><span class="pre">ERR</span></code> trap. They turn them off <em>globally</em>! It
+means that even nested function calls won’t properly terminate on error. This is
+almost never a desired behaviour, so instead we have to wrap function call in
+subshell. It’s highly suboptimal solution, since a new process gets spawned, but
+it’s still better than not handling errors at all.</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span><span class="ch">#!/usr/bin/env bash</span>
+
+<span class="nb">set</span><span class="w"> </span>-euo<span class="w"> </span>pipefail
+
+on_exit<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+<span class="w">	</span><span class="c1"># ...</span>
+<span class="o">}</span>
+
+<span class="nb">trap</span><span class="w"> </span>on_exit<span class="w"> </span>EXIT
+
+get_exit_code<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+<span class="w">	</span><span class="nb">set</span><span class="w"> </span>+e
+<span class="w">	</span><span class="o">(</span>
+<span class="w">		</span><span class="nb">set</span><span class="w"> </span>-e
+<span class="w">		</span><span class="s2">&quot;</span><span class="nv">$@</span><span class="s2">&quot;</span>
+<span class="w">	</span><span class="o">)</span>
+<span class="w">	</span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$?</span><span class="s2">&quot;</span>
+<span class="w">	</span><span class="nb">set</span><span class="w"> </span>-e
+<span class="o">}</span>
+
+function_a<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+<span class="w">	</span>nc<span class="w"> </span>-zw<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="m">127</span>.0.0.1<span class="w"> </span><span class="m">80</span>
+<span class="w">	</span><span class="k">return</span><span class="w"> </span><span class="m">0</span>
+<span class="o">}</span>
+
+function_b<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+<span class="w">	</span>function_a
+<span class="w">	</span><span class="k">return</span><span class="w"> </span><span class="m">0</span>
+<span class="o">}</span>
+
+<span class="k">if</span><span class="w"> </span>function_b<span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<span class="w">	</span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;Expected non-zero!&quot;</span>
+<span class="k">fi</span>
+
+<span class="nb">declare</span><span class="w"> </span>i
+<span class="nv">i</span><span class="o">=</span><span class="k">$(</span>get_exit_code<span class="w"> </span>function_b<span class="k">)</span>
+<span class="k">if</span><span class="w"> </span><span class="o">[</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$i</span><span class="s2">&quot;</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<span class="w">	</span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;Expected non-zero, but got: </span><span class="si">${</span><span class="nv">i</span><span class="si">}</span><span class="s2">&quot;</span>
+<span class="k">fi</span>
+</pre></div>
+</div>
+<p>Running gives:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>$ bash t.sh
+Expected non-zero!
+</pre></div>
+</div>
+<p>assuming port 80 is not listening.</p>
+</section>
+<section id="in-pipelines">
+<h3>In pipelines<a class="headerlink" href="#in-pipelines" title="Link to this heading">¶</a></h3>
+<p>One way to handle non-standard error codes in pipelines is to wrap invocations
+in functions and use builtin <code class="docutils literal notranslate"><span class="pre">return</span></code> to signal actual error. Defining a new
+function can be skipped, if command list is used with syntax <code class="docutils literal notranslate"><span class="pre">{</span> <span class="pre">}</span></code> or if short
+conditional is used.</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span><span class="c1"># ...</span>
+
+nc<span class="w"> </span>-zw<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="m">127</span>.0.0.1<span class="w"> </span><span class="m">80</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="o">[</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$?</span><span class="s2">&quot;</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="o">]</span><span class="w"> </span><span class="se">\</span>
+<span class="w">	</span><span class="p">|</span><span class="w"> </span>cat
+
+<span class="o">{</span>
+<span class="w">	</span><span class="nb">declare</span><span class="w"> </span><span class="nv">i</span><span class="o">=</span><span class="m">0</span>
+<span class="w">	</span>nc<span class="w"> </span>-zw<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="m">127</span>.0.0.1<span class="w"> </span><span class="m">80</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nv">i</span><span class="o">=</span><span class="nv">$?</span>
+<span class="w">	</span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;Returned </span><span class="si">${</span><span class="nv">i</span><span class="si">}</span><span class="s2">&quot;</span>
+<span class="w">	</span><span class="k">if</span><span class="w"> </span><span class="o">[</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$i</span><span class="s2">&quot;</span><span class="w"> </span>!<span class="o">=</span><span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<span class="w">		</span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<span class="w">	</span><span class="k">fi</span>
+<span class="o">}</span><span class="w"> </span><span class="se">\</span>
+<span class="w">	</span><span class="p">|</span><span class="w"> </span>cat
+</pre></div>
+</div>
+<p>Running above gives:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="c1"># bash t.sh</span>
+<span class="n">Returned</span> <span class="mi">1</span>
+</pre></div>
+</div>
+</section>
+</section>
+</section>
+
+
+            <div class="clearer"></div>
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+  <div>
+    <h3><a href="../index.html">Table of Contents</a></h3>
+    <ul>
+<li><a class="reference internal" href="#">2023-01-03 Error handling in Bash</a><ul>
+<li><a class="reference internal" href="#unofficial-strict-mode">Unofficial strict mode</a></li>
+<li><a class="reference internal" href="#using-traps">Using traps</a></li>
+<li><a class="reference internal" href="#printing-call-traces">Printing call traces</a></li>
+<li><a class="reference internal" href="#handling-non-zero-exit-codes">Handling non-zero exit codes</a><ul>
+<li><a class="reference internal" href="#in-functions">In functions</a></li>
+<li><a class="reference internal" href="#in-pipelines">In pipelines</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+  </div>
+  <div>
+    <h4>Previous topic</h4>
+    <p class="topless"><a href="2023-09-02.html"
+                          title="previous chapter">2023-09-02 Comparing JSON documents</a></p>
+  </div>
+  <div>
+    <h4>Next topic</h4>
+    <p class="topless"><a href="2022-08-27.html"
+                          title="next chapter">2022-08-27 Virtual machine as a development environment</a></p>
+  </div>
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="../_sources/posts/2023-01-03.md.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<search id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="Related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="2022-08-27.html" title="2022-08-27 Virtual machine as a development environment"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="2023-09-02.html" title="2023-09-02 Comparing JSON documents"
+             >previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../index.html">OK, noted</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">2023-01-03 Error handling in Bash</a></li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+    &#169; Copyright .
+      Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 8.2.3.
+    </div>
+  </body>
+</html>

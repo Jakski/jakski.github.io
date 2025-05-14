@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>2022-06-30 Configuring fail-over in Nginx &#8212; OK, noted</title>
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
+    <link rel="stylesheet" type="text/css" href="../_static/classic.css?v=2bf1fcf8" />
+    <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
+    
+    <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="2022-05-25 Combining variables in Ansible" href="2022-05-25.html" />
+    <link rel="prev" title="2022-08-27 Virtual machine as a development environment" href="2022-08-27.html" /> 
+  </head><body>
+    <div class="related" role="navigation" aria-label="Related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="2022-05-25.html" title="2022-05-25 Combining variables in Ansible"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="2022-08-27.html" title="2022-08-27 Virtual machine as a development environment"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../index.html">OK, noted</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">2022-06-30 Configuring fail-over in Nginx</a></li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <section id="configuring-fail-over-in-nginx">
+<h1>2022-06-30 Configuring fail-over in Nginx<a class="headerlink" href="#configuring-fail-over-in-nginx" title="Link to this heading">¶</a></h1>
+<p>What it means that a web server provides fail-over? It’s usually understood as a
+warranty that service will continue working even, if one of many instances stops
+functioning correctly. Ideally client shouldn’t even notice that some instance
+ceased to serve requests. I’m going to walk you through configuring fail-over in
+Nginx and explain some useful features. Our stack will be:</p>
+<ul class="simple">
+<li><p>Two instances of mock HTTP web services written in Python</p></li>
+<li><p>Nginx 1.23.0</p></li>
+</ul>
+<section id="web-service">
+<h2>Web service<a class="headerlink" href="#web-service" title="Link to this heading">¶</a></h2>
+<p>First let’s mock HTTP application with:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="ch">#!/usr/bin/env python3</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">http.server</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseHTTPRequestHandler</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">socketserver</span><span class="w"> </span><span class="kn">import</span> <span class="n">TCPServer</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">WebService</span><span class="p">(</span><span class="n">BaseHTTPRequestHandler</span><span class="p">):</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">do_GET</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">send_response</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;GET_CODE&quot;</span><span class="p">,</span> <span class="mi">200</span><span class="p">)))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">end_headers</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">wfile</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">b</span><span class="s2">&quot;Lorem Ipsum</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">do_POST</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">send_response</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;POST_CODE&quot;</span><span class="p">,</span> <span class="mi">200</span><span class="p">)))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">end_headers</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">wfile</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">b</span><span class="s2">&quot;Lorem Ipsum</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">port</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s2">&quot;PORT&quot;</span><span class="p">])</span>
+    <span class="k">with</span> <span class="n">TCPServer</span><span class="p">((</span><span class="s2">&quot;0.0.0.0&quot;</span><span class="p">,</span> <span class="n">port</span><span class="p">),</span> <span class="n">WebService</span><span class="p">)</span> <span class="k">as</span> <span class="n">httpd</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Serving at port: </span><span class="si">{</span><span class="n">port</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="n">httpd</span><span class="o">.</span><span class="n">serve_forever</span><span class="p">()</span>
+</pre></div>
+</div>
+<p>We will run 2 instances of this script on ports 8081 and 8082.</p>
+</section>
+<section id="simple-upstream-configuration">
+<h2>Simple upstream configuration<a class="headerlink" href="#simple-upstream-configuration" title="Link to this heading">¶</a></h2>
+<p>Our first setup will consist of simple upstream without any tunings.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">upstream</span> <span class="n">webserver</span> <span class="p">{</span>
+  <span class="n">server</span> <span class="mf">127.0.0.1</span><span class="p">:</span><span class="mi">8081</span><span class="p">;</span>
+  <span class="n">server</span> <span class="mf">127.0.0.1</span><span class="p">:</span><span class="mi">8082</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="n">server</span> <span class="p">{</span>
+  <span class="n">listen</span> <span class="mi">80</span><span class="p">;</span>
+  <span class="n">server_name</span> <span class="n">localhost</span> <span class="n">default_server</span><span class="p">;</span>
+  <span class="n">location</span> <span class="o">/</span> <span class="p">{</span>
+    <span class="n">proxy_pass</span> <span class="n">http</span><span class="p">:</span><span class="o">//</span><span class="n">webserver</span><span class="p">;</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<section id="what-guarantees-do-we-have">
+<h3>What guarantees do we have?<a class="headerlink" href="#what-guarantees-do-we-have" title="Link to this heading">¶</a></h3>
+<p>Unhealthy state means different things for different applications. By default
+Nginx will serve 50x responses to users and treat them as healthy behaviour.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span># Instance 1
+$ PORT=8081 GET_CODE=500 /webserver.py
+# Instance 2
+$ PORT=8082 GET_CODE=500 /webserver.py
+# Attempt to query in separate terminal
+$ curl -sSiLX GET http://localhost
+HTTP/1.1 500 Internal Server Error
+Server: nginx/1.23.0
+Date: Thu, 30 Jun 2022 17:08:24 GMT
+Transfer-Encoding: chunked
+Connection: keep-alive
+
+Lorem Ipsum
+</pre></div>
+</div>
+<p>Note that <code class="docutils literal notranslate"><span class="pre">Lorem</span> <span class="pre">Ipsum</span></code> came in response, meaning that Nginx actually passed our
+request to backends and returned response. If we stop one of our instances and
+query service again we will see in Nginx log entries like:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="mi">2022</span><span class="o">/</span><span class="mi">06</span><span class="o">/</span><span class="mi">30</span> <span class="mi">17</span><span class="p">:</span><span class="mi">11</span><span class="p">:</span><span class="mi">53</span> <span class="p">[</span><span class="n">error</span><span class="p">]</span> <span class="mi">175</span><span class="c1">#175: *64 connect() failed (111: Connection refused) while connecting to upstream, client: 127.0.0.1, server: localhost, request: &quot;GET / HTTP/1.1&quot;, upstream: &quot;http://127.0.0.1:8082/&quot;, host: &quot;localhost&quot;</span>
+<span class="mi">2022</span><span class="o">/</span><span class="mi">06</span><span class="o">/</span><span class="mi">30</span> <span class="mi">17</span><span class="p">:</span><span class="mi">11</span><span class="p">:</span><span class="mi">53</span> <span class="p">[</span><span class="n">warn</span><span class="p">]</span> <span class="mi">175</span><span class="c1">#175: *64 upstream server temporarily disabled while connecting to upstream, client: 127.0.0.1, server: localhost, request: &quot;GET / HTTP/1.1&quot;, upstream: &quot;http://127.0.0.1:8082/&quot;, host: &quot;localhost&quot;</span>
+<span class="mf">127.0.0.1</span> <span class="o">-</span> <span class="o">-</span> <span class="p">[</span><span class="mi">30</span><span class="o">/</span><span class="n">Jun</span><span class="o">/</span><span class="mi">2022</span><span class="p">:</span><span class="mi">17</span><span class="p">:</span><span class="mi">11</span><span class="p">:</span><span class="mi">53</span> <span class="o">+</span><span class="mi">0000</span><span class="p">]</span> <span class="s2">&quot;GET / HTTP/1.1&quot;</span> <span class="mi">500</span> <span class="mi">22</span> <span class="s2">&quot;-&quot;</span> <span class="s2">&quot;curl/7.83.1&quot;</span> <span class="s2">&quot;-&quot;</span>
+</pre></div>
+</div>
+<p>Nginx gracefully handled outage and served client request without any issue. The
+only way to effectively crash application is to take down all application
+servers:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span># On client side
+$ curl -sSiLX POST http://localhost
+HTTP/1.1 502 Bad Gateway
+Server: nginx/1.23.0
+Date: Thu, 30 Jun 2022 17:16:19 GMT
+Content-Type: text/html
+Content-Length: 157
+Connection: keep-alive
+
+&lt;html&gt;
+&lt;head&gt;&lt;title&gt;502 Bad Gateway&lt;/title&gt;&lt;/head&gt;
+&lt;body&gt;
+&lt;center&gt;&lt;h1&gt;502 Bad Gateway&lt;/h1&gt;&lt;/center&gt;
+&lt;hr&gt;&lt;center&gt;nginx/1.23.0&lt;/center&gt;
+&lt;/body&gt;
+&lt;/html&gt;
+
+# In Nginx log
+2022/06/30 17:17:00 [error] 175#175: *3166 no live upstreams while connecting to upstream, client: 127.0.0.1, server: localhost, request: &quot;POST / HTTP/1.1&quot;, upstream: &quot;http://webserver/&quot;, host: &quot;localhost&quot;
+127.0.0.1 - - [30/Jun/2022:17:17:00 +0000] &quot;POST / HTTP/1.1&quot; 502 157 &quot;-&quot; &quot;curl/7.83.1&quot; &quot;-&quot;
+</pre></div>
+</div>
+</section>
+</section>
+<section id="getting-rid-of-50x-errors">
+<h2>Getting rid of 50x errors<a class="headerlink" href="#getting-rid-of-50x-errors" title="Link to this heading">¶</a></h2>
+<p>What, if our application server communicate with some external resources like
+databases and only one instance can’t reach them properly? Or let’s assume that
+the latest deployment of our application wasn’t successful and one instance
+constantly returns 50x response codes.</p>
+<p>Nginx allows us to decide what it means that backend is unhealthy. In previous
+example it was response code agnostic, but we can change that with
+<code class="docutils literal notranslate"><span class="pre">proxy_next_upstream</span></code> directive like so:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">server</span> <span class="p">{</span>
+  <span class="n">listen</span> <span class="mi">80</span><span class="p">;</span>
+  <span class="n">server_name</span> <span class="n">localhost</span> <span class="n">default_server</span><span class="p">;</span>
+  <span class="n">location</span> <span class="o">/</span> <span class="p">{</span>
+    <span class="n">proxy_next_upstream</span> <span class="n">error</span> <span class="n">timeout</span> <span class="n">http_500</span> <span class="n">http_502</span> <span class="n">http_503</span> <span class="n">http_504</span><span class="p">;</span>
+    <span class="n">proxy_pass</span> <span class="n">http</span><span class="p">:</span><span class="o">//</span><span class="n">webserver</span><span class="p">;</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>Let’s start our application servers in the following setup:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span># Instance 1
+$ PORT=8081 /webserver.py
+# Instance 2
+$ PORT=8082 GET_CODE=500 POST_CODE=500 /webserver.py
+</pre></div>
+</div>
+<p>Now 50x errors will be handles gracefully and reported in logs:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="mi">2022</span><span class="o">/</span><span class="mi">06</span><span class="o">/</span><span class="mi">30</span> <span class="mi">20</span><span class="p">:</span><span class="mi">20</span><span class="p">:</span><span class="mi">34</span> <span class="p">[</span><span class="n">warn</span><span class="p">]</span> <span class="mi">1767</span><span class="c1">#1767: *3198 upstream server temporarily disabled while reading response header from upstream, client: 127.0.0.1, server: localhost, request: &quot;GET / HTTP/1.1&quot;, upstream: &quot;http://127.0.0.1:8082/&quot;, host: &quot;localhost&quot;</span>
+<span class="mf">127.0.0.1</span> <span class="o">-</span> <span class="o">-</span> <span class="p">[</span><span class="mi">30</span><span class="o">/</span><span class="n">Jun</span><span class="o">/</span><span class="mi">2022</span><span class="p">:</span><span class="mi">20</span><span class="p">:</span><span class="mi">20</span><span class="p">:</span><span class="mi">34</span> <span class="o">+</span><span class="mi">0000</span><span class="p">]</span> <span class="s2">&quot;GET / HTTP/1.1&quot;</span> <span class="mi">200</span> <span class="mi">22</span> <span class="s2">&quot;-&quot;</span> <span class="s2">&quot;curl/7.83.1&quot;</span> <span class="s2">&quot;-&quot;</span>
+</pre></div>
+</div>
+<p>There’s only one exception to this protection: non-idempotent HTTP methods.
+By design they’re introducing changes and repeating them might have unwanted
+consequences. By default they will be still returned, no matter what response
+code gets back. This behaviour can be changed with <code class="docutils literal notranslate"><span class="pre">non_idempotent</span></code> parameter
+in <code class="docutils literal notranslate"><span class="pre">proxy_next_upstream</span></code> directive, but keep in mind that repeating requests
+like POST and PATCH might result in unexpected problems. For example, if user is
+creating a new entry on forum with POST, then repeating this request might
+create 2 same entries. This behaviour will be surely confusing. Even when Nginx
+marks backend as unhealthy, it still tries to pass new request in some
+intervals. Solely detecting unhealthy instance and performing fail-over doesn’t
+solve issue.</p>
+<blockquote>
+<div><p>If you’re using <code class="docutils literal notranslate"><span class="pre">upstream</span></code>, it might be worth tuning
+<code class="docutils literal notranslate"><span class="pre">proxy_next_upstream_tries</span></code> as well. Otherwise bad requests might end up
+bouncing from backend to backend, causing tremendous load on your
+infrastructure.</p>
+</div></blockquote>
+</section>
+<section id="unfinished-http-response">
+<h2>Unfinished HTTP response<a class="headerlink" href="#unfinished-http-response" title="Link to this heading">¶</a></h2>
+<p>Nginx configuration is resetted to our first example without
+<code class="docutils literal notranslate"><span class="pre">proxy_next_upstream</span></code> customization. This time the second application instance
+will be actually <code class="docutils literal notranslate"><span class="pre">netcat</span></code> TCP server:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span># Instance 1
+$ PORT=8081 /webserver.py
+# Instance 2
+$ nc -lp 8082
+</pre></div>
+</div>
+<p>It’s as easy as pressing <code class="docutils literal notranslate"><span class="pre">CTRL</span> <span class="pre">+</span> <span class="pre">C</span></code> in terminal to finish TCP connection in
+<code class="docutils literal notranslate"><span class="pre">netcat</span></code>.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span># netcat output
+$ nc -lp 8082
+GET / HTTP/1.0
+Host: webserver
+Connection: close
+User-Agent: curl/7.83.1
+Accept: */*
+
+^Cpunt!
+
+# Nginx log
+2022/06/30 20:43:35 [warn] 1839#1839: *3265 upstream server temporarily disabled while reading response header from upstream, client: 127.0.0.1, server: localhost, request: &quot;GET / HTTP/1.1&quot;, upstream: &quot;http://127.0.0.1:8082/&quot;, host: &quot;localhost&quot;
+127.0.0.1 - - [30/Jun/2022:20:43:35 +0000] &quot;GET / HTTP/1.1&quot; 200 22 &quot;-&quot; &quot;curl/7.83.1&quot; &quot;-&quot;
+
+# curl output
+$ curl -sSiLX GET http://localhost
+HTTP/1.1 200 OK
+Server: nginx/1.23.0
+Date: Thu, 30 Jun 2022 20:43:35 GMT
+Transfer-Encoding: chunked
+Connection: keep-alive
+
+Lorem Ipsum
+</pre></div>
+</div>
+<p>OK, Nginx handled that perfectly. Client had no idea that some backend just
+disappeared while serving request. I also tried to send partial response, but
+the result was the same. Yet I’ve found one case where Nginx won’t use next
+upstream:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span># curl output
+$ curl -sSiLX GET http://localhost
+curl: (1) Received HTTP/0.9 when not allowed
+
+# netcat output
+$ nc -lp 8082
+GET / HTTP/1.0
+Host: webserver
+Connection: close
+User-Agent: curl/7.83.1
+Accept: */*
+
+malformed-response
+
+# Nginx logs
+2022/06/30 20:53:14 [error] 1840#1840: *3306 upstream sent no valid HTTP/1.0 header while reading response header from upstream, client: 127.0.0.1, server: localhost, request: &quot;GET / HTTP/1.1&quot;, upstream: &quot;http://127.0.0.1:8082/&quot;, host: &quot;localhost&quot;
+127.0.0.1 - - [30/Jun/2022:20:53:15 +0000] &quot;GET / HTTP/1.1&quot; 009 19 &quot;-&quot; &quot;curl/7.83.1&quot; &quot;-&quot;
+</pre></div>
+</div>
+<p>It’s extremely rare case, because application server has to make errors in HTTP
+protocol for this to happen. These days HTTP is usually handled on framework
+level, so developers are protected from making such errors in business logic
+code.</p>
+</section>
+</section>
+
+
+            <div class="clearer"></div>
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+  <div>
+    <h3><a href="../index.html">Table of Contents</a></h3>
+    <ul>
+<li><a class="reference internal" href="#">2022-06-30 Configuring fail-over in Nginx</a><ul>
+<li><a class="reference internal" href="#web-service">Web service</a></li>
+<li><a class="reference internal" href="#simple-upstream-configuration">Simple upstream configuration</a><ul>
+<li><a class="reference internal" href="#what-guarantees-do-we-have">What guarantees do we have?</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#getting-rid-of-50x-errors">Getting rid of 50x errors</a></li>
+<li><a class="reference internal" href="#unfinished-http-response">Unfinished HTTP response</a></li>
+</ul>
+</li>
+</ul>
+
+  </div>
+  <div>
+    <h4>Previous topic</h4>
+    <p class="topless"><a href="2022-08-27.html"
+                          title="previous chapter">2022-08-27 Virtual machine as a development environment</a></p>
+  </div>
+  <div>
+    <h4>Next topic</h4>
+    <p class="topless"><a href="2022-05-25.html"
+                          title="next chapter">2022-05-25 Combining variables in Ansible</a></p>
+  </div>
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="../_sources/posts/2022-06-30.md.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<search id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="Related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="2022-05-25.html" title="2022-05-25 Combining variables in Ansible"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="2022-08-27.html" title="2022-08-27 Virtual machine as a development environment"
+             >previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../index.html">OK, noted</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">2022-06-30 Configuring fail-over in Nginx</a></li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+    &#169; Copyright .
+      Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 8.2.3.
+    </div>
+  </body>
+</html>

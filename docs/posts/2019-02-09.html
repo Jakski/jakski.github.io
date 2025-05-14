@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>2019-02-09 Neovim error: Channel doesn’t exist &#8212; OK, noted</title>
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
+    <link rel="stylesheet" type="text/css" href="../_static/classic.css?v=2bf1fcf8" />
+    <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
+    
+    <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="2018-11-11 Debugging Go in Kubernetes" href="2018-11-11.html" />
+    <link rel="prev" title="2019-05-26 Advanced curl usage" href="2019-05-26.html" /> 
+  </head><body>
+    <div class="related" role="navigation" aria-label="Related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="2018-11-11.html" title="2018-11-11 Debugging Go in Kubernetes"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="2019-05-26.html" title="2019-05-26 Advanced curl usage"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../index.html">OK, noted</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">2019-02-09 Neovim error: Channel doesn’t exist</a></li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <section id="neovim-error-channel-doesn-t-exist">
+<h1>2019-02-09 Neovim error: Channel doesn’t exist<a class="headerlink" href="#neovim-error-channel-doesn-t-exist" title="Link to this heading">¶</a></h1>
+<p>After discovering Neovim’s remote plugin interface I decided to give it a try
+and develop some Python-hosted plugins. While I like the idea of moving plugin’s
+logic from Vim script to external language-agnostic services, I’ve already
+stumbled upon not so trivial problems with debugging inter-process
+communication.</p>
+<section id="scenario">
+<h2>Scenario<a class="headerlink" href="#scenario" title="Link to this heading">¶</a></h2>
+<p>So I launched Neovim hoping to see Python host update syntax highlight in my
+editor, but then this showed up:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">E475</span><span class="p">:</span> <span class="n">Invalid</span> <span class="n">argument</span><span class="p">:</span> <span class="n">Channel</span> <span class="n">doesn</span><span class="s1">&#39;t exist</span>
+</pre></div>
+</div>
+</section>
+<section id="debbuging-with-documented-methods">
+<h2>Debbuging with documented methods<a class="headerlink" href="#debbuging-with-documented-methods" title="Link to this heading">¶</a></h2>
+<p>Pynvim has pretty good documentation, including debugging
+<a class="reference external" href="https://pynvim.readthedocs.io/en/latest/development.html">steps</a>. Let’s see
+what I can get after launching Neovim with debugging flags for Python-host:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>$ NVIM_PYTHON_LOG_FILE=logfile NVIM_PYTHON_LOG_LEVEL=DEBUG nvim
+</pre></div>
+</div>
+<p>Now I can get trace from file <code class="docutils literal notranslate"><span class="pre">logfile_py3_rplugin</span></code> after error occurs:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="mi">2019</span><span class="o">-</span><span class="mi">02</span><span class="o">-</span><span class="mi">09</span> <span class="mi">20</span><span class="p">:</span><span class="mi">33</span><span class="p">:</span><span class="mi">30</span><span class="p">,</span><span class="mi">425</span> <span class="p">[</span><span class="n">DEBUG</span> <span class="o">@</span> <span class="n">msgpack_stream</span><span class="o">.</span><span class="n">py</span><span class="p">:</span><span class="n">_on_data</span><span class="p">:</span><span class="mi">61</span><span class="p">]</span> <span class="mi">31297</span> <span class="o">-</span> <span class="n">received</span> <span class="n">message</span><span class="p">:</span> <span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="sa">b</span><span class="s1">&#39;nvim_error_event&#39;</span><span class="p">,</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="sa">b</span><span class="s1">&#39;Message is not an array&#39;</span><span class="p">]]</span>
+<span class="o">...</span>
+<span class="o">...</span>
+<span class="o">...</span>
+<span class="mi">2019</span><span class="o">-</span><span class="mi">02</span><span class="o">-</span><span class="mi">09</span> <span class="mi">20</span><span class="p">:</span><span class="mi">33</span><span class="p">:</span><span class="mi">30</span><span class="p">,</span><span class="mi">466</span> <span class="p">[</span><span class="n">ERROR</span> <span class="o">@</span> <span class="n">base_events</span><span class="o">.</span><span class="n">py</span><span class="p">:</span><span class="n">default_exception_handler</span><span class="p">:</span><span class="mi">1608</span><span class="p">]</span> <span class="mi">31297</span> <span class="o">-</span> <span class="ne">Exception</span> <span class="ow">in</span> <span class="n">callback</span> <span class="n">_UnixWritePipeTransport</span><span class="o">.</span><span class="n">_call_connection_lost</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+<span class="n">handle</span><span class="p">:</span> <span class="o">&lt;</span><span class="n">Handle</span> <span class="n">_UnixWritePipeTransport</span><span class="o">.</span><span class="n">_call_connection_lost</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span><span class="o">&gt;</span>
+<span class="ne">BrokenPipeError</span><span class="p">:</span> <span class="p">[</span><span class="n">Errno</span> <span class="mi">32</span><span class="p">]</span> <span class="n">Broken</span> <span class="n">pipe</span>
+
+<span class="n">During</span> <span class="n">handling</span> <span class="n">of</span> <span class="n">the</span> <span class="n">above</span> <span class="n">exception</span><span class="p">,</span> <span class="n">another</span> <span class="n">exception</span> <span class="n">occurred</span><span class="p">:</span>
+
+<span class="n">Traceback</span> <span class="p">(</span><span class="n">most</span> <span class="n">recent</span> <span class="n">call</span> <span class="n">last</span><span class="p">):</span>
+ <span class="n">File</span> <span class="s2">&quot;/usr/lib/python3.7/asyncio/events.py&quot;</span><span class="p">,</span> <span class="n">line</span> <span class="mi">88</span><span class="p">,</span> <span class="ow">in</span> <span class="n">_run</span>
+   <span class="bp">self</span><span class="o">.</span><span class="n">_context</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_callback</span><span class="p">,</span> <span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">_args</span><span class="p">)</span>
+ <span class="n">File</span> <span class="s2">&quot;/usr/lib/python3.7/asyncio/unix_events.py&quot;</span><span class="p">,</span> <span class="n">line</span> <span class="mi">744</span><span class="p">,</span> <span class="ow">in</span> <span class="n">_call_connection_lost</span>
+   <span class="bp">self</span><span class="o">.</span><span class="n">_pipe</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+<span class="ne">BrokenPipeError</span><span class="p">:</span> <span class="p">[</span><span class="n">Errno</span> <span class="mi">32</span><span class="p">]</span> <span class="n">Broken</span> <span class="n">pipe</span>
+</pre></div>
+</div>
+<p>Ok, so Python-host dies for some reason and it seems it sends to Neovim some
+malformed messages, but I can’t find out what’s being actually sent.</p>
+</section>
+<section id="debugging-by-tracing-system-calls">
+<h2>Debugging by tracing system calls<a class="headerlink" href="#debugging-by-tracing-system-calls" title="Link to this heading">¶</a></h2>
+<p>Before reading this part you must understand how Python-host gets started and
+communicates with editor. Remote plugins take more resources than Vim scripts,
+so Neovim tries to use them only when necessary. That’s the reason you have to
+run <em>:UpdateRemotePlugins</em>, before using any of them. <em>:UpdateRemotePlugins</em>
+creates sort of a mapping between editor actions and remote procedure calls.
+Every time user triggers RPC, Neovim starts plugin host if it’s not yet running,
+and forwards messages.</p>
+<p>Plugin hosts are just Neovim’s subprocesses communicating via standard
+input/output. You can see it by triggering remote plugin and running <em>ps -ef
+–forest</em>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>jakub    20904  2164  0 13:47 pts/5    00:00:00  |   \_ -bash
+jakub    29952 20904  0 19:53 pts/5    00:00:03  |   |   \_ vim
+jakub    29989 29952  0 19:53 ?        00:00:01  |   |       \_ python3 -c import sys; sys.path.remove(&quot;&quot;); import neovim; neovim.start_host() /home/jakub/.vim/plugged/vim-yaml/rplugin/python3/vim_yaml
+</pre></div>
+</div>
+<p>I’m going to track messages sent by process 29989. Every time plugin host
+communicates with Neovim it issues system call to write something to file
+descriptor 1(standard output). I can spy on messages with <em>strace</em>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>$ strace -e write=1 -p 29989
+strace: Process 31563 attached
+epoll_wait(3,
+</pre></div>
+</div>
+<p><em>strace</em> is really verbose, so I limited it to show only writes to standard
+output. Now I have to reproduce error in editor. Just before error occurs I
+see:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">write</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;StreamStartToken 0 0 0</span><span class="se">\n</span><span class="s2">DocumentS&quot;</span><span class="o">...</span><span class="p">,</span> <span class="mi">8195</span><span class="p">)</span> <span class="o">=</span> <span class="mi">8195</span>
+ <span class="o">|</span> <span class="mi">00000</span>  <span class="mi">53</span> <span class="mi">74</span> <span class="mi">72</span> <span class="mi">65</span> <span class="mi">61</span> <span class="mi">6</span><span class="n">d</span> <span class="mi">53</span> <span class="mi">74</span>  <span class="mi">61</span> <span class="mi">72</span> <span class="mi">74</span> <span class="mi">54</span> <span class="mi">6</span><span class="n">f</span> <span class="mi">6</span><span class="n">b</span> <span class="mi">65</span> <span class="mi">6</span><span class="n">e</span>  <span class="n">StreamStartToken</span> <span class="o">|</span>
+ <span class="o">|</span> <span class="mi">00010</span>  <span class="mi">20</span> <span class="mi">30</span> <span class="mi">20</span> <span class="mi">30</span> <span class="mi">20</span> <span class="mi">30</span> <span class="mi">0</span><span class="n">a</span> <span class="mi">44</span>  <span class="mi">6</span><span class="n">f</span> <span class="mi">63</span> <span class="mi">75</span> <span class="mi">6</span><span class="n">d</span> <span class="mi">65</span> <span class="mi">6</span><span class="n">e</span> <span class="mi">74</span> <span class="mi">53</span>   <span class="mi">0</span> <span class="mi">0</span> <span class="mf">0.</span><span class="n">DocumentS</span> <span class="o">|</span>
+ <span class="o">|</span> <span class="mi">00020</span>  <span class="mi">74</span> <span class="mi">61</span> <span class="mi">72</span> <span class="mi">74</span> <span class="mi">54</span> <span class="mi">6</span><span class="n">f</span> <span class="mi">6</span><span class="n">b</span> <span class="mi">65</span>  <span class="mi">6</span><span class="n">e</span> <span class="mi">20</span> <span class="mi">30</span> <span class="mi">20</span> <span class="mi">30</span> <span class="mi">20</span> <span class="mi">33</span> <span class="mi">0</span><span class="n">a</span>  <span class="n">tartToken</span> <span class="mi">0</span> <span class="mi">0</span> <span class="mf">3.</span> <span class="o">|</span>
+ <span class="o">|</span> <span class="mi">00030</span>  <span class="mi">42</span> <span class="mi">6</span><span class="n">c</span> <span class="mi">6</span><span class="n">f</span> <span class="mi">63</span> <span class="mi">6</span><span class="n">b</span> <span class="mi">4</span><span class="n">d</span> <span class="mi">61</span> <span class="mi">70</span>  <span class="mi">70</span> <span class="mi">69</span> <span class="mi">6</span><span class="n">e</span> <span class="mi">67</span> <span class="mi">53</span> <span class="mi">74</span> <span class="mi">61</span> <span class="mi">72</span>  <span class="n">BlockMappingStar</span> <span class="o">|</span>
+ <span class="o">|</span> <span class="mi">00040</span>  <span class="mi">74</span> <span class="mi">54</span> <span class="mi">6</span><span class="n">f</span> <span class="mi">6</span><span class="n">b</span> <span class="mi">65</span> <span class="mi">6</span><span class="n">e</span> <span class="mi">20</span> <span class="mi">32</span>  <span class="mi">20</span> <span class="mi">30</span> <span class="mi">20</span> <span class="mi">30</span> <span class="mi">0</span><span class="n">a</span> <span class="mi">4</span><span class="n">b</span> <span class="mi">65</span> <span class="mi">79</span>  <span class="n">tToken</span> <span class="mi">2</span> <span class="mi">0</span> <span class="mf">0.</span><span class="n">Key</span> <span class="o">|</span>
+<span class="o">...</span>
+<span class="o">...</span>
+<span class="o">...</span>
+</pre></div>
+</div>
+<p>This certainly doesn’t look like RPC message sent by plugin host, so what’s
+that? It turned out to be one of my debug prints which worked fine, when I ran
+tests with Tox, but caused headache for Neovim, because it’s not proper msgpack
+payload accepted as RPC. Removing single <em>print(…)</em> solved everything.</p>
+</section>
+</section>
+
+
+            <div class="clearer"></div>
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+  <div>
+    <h3><a href="../index.html">Table of Contents</a></h3>
+    <ul>
+<li><a class="reference internal" href="#">2019-02-09 Neovim error: Channel doesn’t exist</a><ul>
+<li><a class="reference internal" href="#scenario">Scenario</a></li>
+<li><a class="reference internal" href="#debbuging-with-documented-methods">Debbuging with documented methods</a></li>
+<li><a class="reference internal" href="#debugging-by-tracing-system-calls">Debugging by tracing system calls</a></li>
+</ul>
+</li>
+</ul>
+
+  </div>
+  <div>
+    <h4>Previous topic</h4>
+    <p class="topless"><a href="2019-05-26.html"
+                          title="previous chapter">2019-05-26 Advanced curl usage</a></p>
+  </div>
+  <div>
+    <h4>Next topic</h4>
+    <p class="topless"><a href="2018-11-11.html"
+                          title="next chapter">2018-11-11 Debugging Go in Kubernetes</a></p>
+  </div>
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="../_sources/posts/2019-02-09.md.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<search id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="Related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="2018-11-11.html" title="2018-11-11 Debugging Go in Kubernetes"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="2019-05-26.html" title="2019-05-26 Advanced curl usage"
+             >previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../index.html">OK, noted</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">2019-02-09 Neovim error: Channel doesn’t exist</a></li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+    &#169; Copyright .
+      Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 8.2.3.
+    </div>
+  </body>
+</html>

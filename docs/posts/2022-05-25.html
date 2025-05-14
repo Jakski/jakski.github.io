@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>2022-05-25 Combining variables in Ansible &#8212; OK, noted</title>
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
+    <link rel="stylesheet" type="text/css" href="../_static/classic.css?v=2bf1fcf8" />
+    <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
+    
+    <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="2022-04-04 Securing development environment" href="2022-04-04.html" />
+    <link rel="prev" title="2022-06-30 Configuring fail-over in Nginx" href="2022-06-30.html" /> 
+  </head><body>
+    <div class="related" role="navigation" aria-label="Related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="2022-04-04.html" title="2022-04-04 Securing development environment"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="2022-06-30.html" title="2022-06-30 Configuring fail-over in Nginx"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../index.html">OK, noted</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">2022-05-25 Combining variables in Ansible</a></li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <section id="combining-variables-in-ansible">
+<h1>2022-05-25 Combining variables in Ansible<a class="headerlink" href="#combining-variables-in-ansible" title="Link to this heading">¶</a></h1>
+<p>Ansible is known for it’s simplicity. To put it short: Ansible playbooks are
+just tasks executed on hosts and sprinkled with variables. Some of these
+variables change the way Ansible behaves as a whole and the rest of them are
+left for user. They are usually organized into variables assigned to hosts
+and variables assigned to groups. Host variables are boring, since we can’t
+practically reuse them. Group variables are where the fun begins. Most projects
+have a set of global configuration settings like address of LDAP server, user
+accounts etc. However when introducing groups some problem emerges: what, if we
+want to combine variables from different groups or group and host?</p>
+<section id="why-would-you-want-to-combine-ansible-variables">
+<h2>Why would you want to combine Ansible variables?<a class="headerlink" href="#why-would-you-want-to-combine-ansible-variables" title="Link to this heading">¶</a></h2>
+<p>Let’s say that you have Ansible role for provisioning user accounts. You’re
+smart, so you don’t import it separately for each account and instead use loops.
+You have a common set of project accounts, but suddenly third party contractor
+from outside joins project and requires access to only one host. Of course you
+can hardcode additional account creation in playbook and call it a day, but it
+will be hide &amp; seek game for future maintainers. Variables are supposed to
+express project’s configuration. Ad-hoc additions to roles blurs separation
+between reusable modules and configuration.</p>
+<p>I’ve used accounts in above example, but I hope you get the idea: we have
+role for managing certain service, common set of resources for this service
+and unique additions assigned more granularly to hosts. You may say that there’s
+nothing wrong in reapplying single role for host, but what if it’s
+<code class="docutils literal notranslate"><span class="pre">authorized_keys</span></code> file for SSH we’re managing and we don’t want any stray keys?
+It means that role has exclusive control other some service and reapplying it
+with different variables would erase prior configuration. That’s when first
+questions about <em>merging</em> and <em>combining</em> variables are asked.</p>
+</section>
+<section id="known-solutions">
+<h2>Known solutions<a class="headerlink" href="#known-solutions" title="Link to this heading">¶</a></h2>
+<p>This problem is not new, so let’s review some existing solutions.</p>
+<section id="using-jinja2-filters">
+<h3>Using Jinja2 filters<a class="headerlink" href="#using-jinja2-filters" title="Link to this heading">¶</a></h3>
+<p>Since variables have Python-compatible data types, nothing stops us from using
+Jinja2 filters for transformation. In Ansible we have:</p>
+<ul class="simple">
+<li><p><a class="reference external" href="https://docs.ansible.com/ansible/latest/user_guide/playbooks_filters.html#combining-hashes-dictionaries">combine</a> - Allows to merge dictionaries/mappings including deep merge.</p></li>
+<li><p><a class="reference external" href="https://docs.ansible.com/ansible/latest/user_guide/playbooks_filters.html#selecting-from-sets-or-lists-set-theory">union</a> and other set theory filters - Allow to concatenate lists.</p></li>
+</ul>
+<p>Using set theory filters and combine allows to render configuration based on
+more than one variable. This way instead of <code class="docutils literal notranslate"><span class="pre">system_accounts</span></code> variable we can
+have <code class="docutils literal notranslate"><span class="pre">system_accounts_host</span></code> and <code class="docutils literal notranslate"><span class="pre">system_accounts_global</span></code> pair. They can be
+merged upon using role like so:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Setup system accounts</span>
+<span class="w">  </span><span class="nt">import_role</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">system_accounts</span>
+<span class="w">  </span><span class="nt">vars</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">system_accounts</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;{{</span><span class="nv"> </span><span class="s">system_accounts_global</span><span class="nv"> </span><span class="s">|</span><span class="nv"> </span><span class="s">union(system_accounts_host)</span><span class="nv"> </span><span class="s">}}&quot;</span>
+</pre></div>
+</div>
+<p>This way we have to modify playbook in order to respect host/group specific
+variables. It’ll be especially cumbersome when we have multilevel configuration
+with child groups like subregions or availability zones in datacenter.</p>
+</section>
+<section id="hash-behaviour-configuration">
+<h3>hash_behaviour configuration<a class="headerlink" href="#hash-behaviour-configuration" title="Link to this heading">¶</a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">hash_behaviour</span></code> is probably one of lesser known Ansible configuration settings,
+because it has potential to break a lot of things. The idea is that by default
+Ansible variables are replaced in specified order, but you can change this
+behaviour to merging instead. It seems like the most obvious solution, but:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">hash_behaviour</span></code> is applied globally. A lot of code relies on default
+behaviour, so expect problems.</p></li>
+<li><p>Some modules like <code class="docutils literal notranslate"><span class="pre">include_vars</span></code> ignore this setting anyway.</p></li>
+<li><p>It was deprecated once and documentation strongly advises to avoid using it.</p></li>
+</ul>
+<p>It’s handy to know that such option exists, but it’s too limited to be actually
+useful. Puppet solved this issue better with
+<a class="reference external" href="https://puppet.com/docs/puppet/7/hiera_merging.html#setting_lookup_options_to_refine_the_result_of_a_lookup-defining-merge-behavior-with-lookup-options">lookup_options</a>
+which allow to specify merge behaviour per variable.</p>
+</section>
+<section id="using-plugins">
+<h3>Using plugins<a class="headerlink" href="#using-plugins" title="Link to this heading">¶</a></h3>
+<p>At least 2 plugins for handling variables merging exist:</p>
+<ul class="simple">
+<li><p><a class="reference external" href="https://gitlab.com/Symaxion/ansible-common/">Symaxion/ansible-common</a> - Looks nice, but suffers similar
+issues to <code class="docutils literal notranslate"><span class="pre">hash_behaviour</span></code> approach.</p></li>
+<li><p><a class="reference external" href="https://github.com/leapfrogonline/ansible-merge-vars">leapfrogonline/ansible-merge-vars</a> - Requires extra task for
+merging variables.</p></li>
+</ul>
+<p>Adding plugin has also one obvious downside: it’s yet another dependency which
+needs to be downloaded for each installation and may become unmaintained some
+day. Of course it hugely depends on project. Some plugins have been consistently
+maintained for long years despite small user-base.</p>
+</section>
+</section>
+<section id="yet-another-approach">
+<h2>Yet another approach<a class="headerlink" href="#yet-another-approach" title="Link to this heading">¶</a></h2>
+<blockquote>
+<div><p>It works similarly to <a class="reference external" href="https://github.com/leapfrogonline/ansible-merge-vars">ansible-merge-vars</a>,
+but doesn’t require any plugin.</p>
+</div></blockquote>
+<p>Have you ever heard of <code class="docutils literal notranslate"><span class="pre">varnames</span></code> lookup plugin? It’s actually <a class="reference external" href="https://docs.ansible.com/ansible/devel/reference_appendices/config.html#default-hash-behaviour">mentioned in
+documentation</a>
+as an alternative to <code class="docutils literal notranslate"><span class="pre">hash_behaviour</span></code>. It allows us to query defined variables
+names using regular expressions. It means that we no longer have to hardcode
+variables names like in approach with <code class="docutils literal notranslate"><span class="pre">combine</span></code>/<code class="docutils literal notranslate"><span class="pre">union</span></code>, but we still need to
+make extra names for variables. We will construct variable’s value based on a
+few other variables matching expression. Jinja2 macros for doing exactly this
+can be written like so:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="o">%</span> <span class="n">macro</span> <span class="n">merge_list</span><span class="p">(</span><span class="n">pattern</span><span class="p">)</span> <span class="o">-%</span><span class="p">}</span>
+  <span class="p">{</span><span class="o">%</span> <span class="nb">set</span> <span class="n">ns</span> <span class="o">=</span> <span class="n">namespace</span><span class="p">(</span><span class="n">output</span><span class="o">=</span><span class="p">[])</span> <span class="o">-%</span><span class="p">}</span>
+  <span class="p">{</span><span class="o">%</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">lookup</span><span class="p">(</span><span class="s1">&#39;varnames&#39;</span><span class="p">,</span> <span class="n">pattern</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;,&#39;</span><span class="p">)</span> <span class="o">-%</span><span class="p">}</span>
+    <span class="p">{</span><span class="o">%</span> <span class="nb">set</span> <span class="n">ns</span><span class="o">.</span><span class="n">output</span> <span class="o">=</span> <span class="n">ns</span><span class="o">.</span><span class="n">output</span> <span class="o">|</span> <span class="n">union</span><span class="p">(</span><span class="n">lookup</span><span class="p">(</span><span class="s1">&#39;vars&#39;</span><span class="p">,</span> <span class="n">name</span><span class="p">))</span> <span class="o">-%</span><span class="p">}</span>
+  <span class="p">{</span><span class="o">%</span> <span class="n">endfor</span> <span class="o">-%</span><span class="p">}</span>
+  <span class="p">{{</span> <span class="n">ns</span><span class="o">.</span><span class="n">output</span> <span class="p">}}</span>
+<span class="p">{</span><span class="o">%</span> <span class="n">endmacro</span> <span class="o">-%</span><span class="p">}</span>
+
+<span class="p">{</span><span class="o">%</span> <span class="n">macro</span> <span class="n">merge_dict</span><span class="p">(</span><span class="n">pattern</span><span class="p">,</span> <span class="n">recursive</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span> <span class="o">-%</span><span class="p">}</span>
+  <span class="p">{</span><span class="o">%</span> <span class="nb">set</span> <span class="n">ns</span> <span class="o">=</span> <span class="n">namespace</span><span class="p">(</span><span class="n">output</span><span class="o">=</span><span class="p">{})</span> <span class="o">-%</span><span class="p">}</span>
+  <span class="p">{</span><span class="o">%</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">lookup</span><span class="p">(</span><span class="s1">&#39;varnames&#39;</span><span class="p">,</span> <span class="n">pattern</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;,&#39;</span><span class="p">)</span> <span class="o">-%</span><span class="p">}</span>
+    <span class="p">{</span><span class="o">%</span> <span class="nb">set</span> <span class="n">ns</span><span class="o">.</span><span class="n">output</span> <span class="o">=</span> <span class="n">ns</span><span class="o">.</span><span class="n">output</span> <span class="o">|</span> <span class="n">combine</span><span class="p">(</span><span class="n">lookup</span><span class="p">(</span><span class="s1">&#39;vars&#39;</span><span class="p">,</span> <span class="n">name</span><span class="p">),</span> <span class="n">recursive</span><span class="o">=</span><span class="n">recursive</span><span class="p">)</span> <span class="o">-%</span><span class="p">}</span>
+  <span class="p">{</span><span class="o">%</span> <span class="n">endfor</span> <span class="o">-%</span><span class="p">}</span>
+  <span class="p">{{</span> <span class="n">ns</span><span class="o">.</span><span class="n">output</span> <span class="p">}}</span>
+<span class="p">{</span><span class="o">%</span> <span class="n">endmacro</span> <span class="o">-%</span><span class="p">}</span>
+</pre></div>
+</div>
+<p>Of course we don’t want to copy this much of code every time we want to create
+merged variable. Instead let’s save these macros in <code class="docutils literal notranslate"><span class="pre">templates/macros.j2</span></code> file
+in our project. Some conventions are required to make our playbook easier to
+maintain. Let’s say that for every variable <code class="docutils literal notranslate"><span class="pre">x</span></code> partial variables shall be named
+according to pattern <code class="docutils literal notranslate"><span class="pre">&lt;id&gt;__x__m</span></code>, where <code class="docutils literal notranslate"><span class="pre">&lt;id&gt;</span></code> is group or host name and <code class="docutils literal notranslate"><span class="pre">__m</span></code>
+suffix stands for <code class="docutils literal notranslate"><span class="pre">merged</span></code>. We can create merged variable like so:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">all__system_groups__m</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">jakski</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{}</span>
+<span class="nt">system_groups</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">&gt;</span>
+<span class="w">  </span><span class="no">{% from &#39;templates/macros.j2&#39; import merge_dict with context -%}</span>
+<span class="w">  </span><span class="no">{{ merge_dict(&#39;__system_groups__m$&#39;) }}</span>
+</pre></div>
+</div>
+<p>Now, if we wanted to add a few more groups which are specific to host <code class="docutils literal notranslate"><span class="pre">prod1</span></code>:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">prod1__system_groups__m</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">prod-app</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{}</span>
+<span class="w">  </span><span class="nt">backups</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{}</span>
+</pre></div>
+</div>
+<p>Above snippet can be placed in <code class="docutils literal notranslate"><span class="pre">host_vars</span></code>, but nothing stops us from using this
+approach in <code class="docutils literal notranslate"><span class="pre">group_vars</span></code> or even creating merged variable based on partials from
+multiple groups.</p>
+<p>It’s not exactly quick &amp; easy, but this way we rely only on builtin plugins and
+Jinja2, so there’s no problem with dropping it into an already working project
+and use only for specified variables.</p>
+</section>
+</section>
+
+
+            <div class="clearer"></div>
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+  <div>
+    <h3><a href="../index.html">Table of Contents</a></h3>
+    <ul>
+<li><a class="reference internal" href="#">2022-05-25 Combining variables in Ansible</a><ul>
+<li><a class="reference internal" href="#why-would-you-want-to-combine-ansible-variables">Why would you want to combine Ansible variables?</a></li>
+<li><a class="reference internal" href="#known-solutions">Known solutions</a><ul>
+<li><a class="reference internal" href="#using-jinja2-filters">Using Jinja2 filters</a></li>
+<li><a class="reference internal" href="#hash-behaviour-configuration">hash_behaviour configuration</a></li>
+<li><a class="reference internal" href="#using-plugins">Using plugins</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#yet-another-approach">Yet another approach</a></li>
+</ul>
+</li>
+</ul>
+
+  </div>
+  <div>
+    <h4>Previous topic</h4>
+    <p class="topless"><a href="2022-06-30.html"
+                          title="previous chapter">2022-06-30 Configuring fail-over in Nginx</a></p>
+  </div>
+  <div>
+    <h4>Next topic</h4>
+    <p class="topless"><a href="2022-04-04.html"
+                          title="next chapter">2022-04-04 Securing development environment</a></p>
+  </div>
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="../_sources/posts/2022-05-25.md.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<search id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="Related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="2022-04-04.html" title="2022-04-04 Securing development environment"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="2022-06-30.html" title="2022-06-30 Configuring fail-over in Nginx"
+             >previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../index.html">OK, noted</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">2022-05-25 Combining variables in Ansible</a></li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+    &#169; Copyright .
+      Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 8.2.3.
+    </div>
+  </body>
+</html>
