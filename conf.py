@@ -3,7 +3,7 @@ language = "en"
 author = "Jakub Pieńkowski"
 master_doc = "index"
 source_suffix = ".rst"
-exclude_patterns = ["docs", "venv", "jakski_github_io.egg-info", "README.md"]
+exclude_patterns = ["docs", "venv", "jakski_github_io.egg-info", "README.md", "requirements.txt"]
 today_fmt = "%Y-%m-%d"
 extensions = [
     "sphinx.ext.graphviz",

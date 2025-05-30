@@ -120,11 +120,11 @@ on_error() {
 	declare \
 		cmd=$BASH_COMMAND \
 		exit_code=$?
-	echo &quot;Failing with exit code ${exit_code} at ${*} in command: ${cmd}&quot; &gt;&amp;2
+	echo &quot;Failing with exit code ${exit_code} at ${BASH_SOURCE[0]}:${FUNCNAME[0]} in command: ${cmd}&quot; &gt;&amp;2
 	exit &quot;$exit_code&quot;
 }
 
-trap on_error ERR
+trap &#39;on_error ${BASH_SOURCE[0]}:${BASH_LINENO[0]}&#39; ERR
 
 function_a() {
 	nc -zw 3 127.0.0.1 22
@@ -138,7 +138,7 @@ function_b
 </pre></div>
 </div>
 <p>It save us some time when error occurs without <code class="docutils literal notranslate"><span class="pre">xtrace</span></code>:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">Failing</span> <span class="k">with</span> <span class="n">exit</span> <span class="n">code</span> <span class="mi">1</span> <span class="n">at</span>  <span class="ow">in</span> <span class="n">command</span><span class="p">:</span> <span class="n">nc</span> <span class="o">-</span><span class="n">zw</span> <span class="mi">3</span> <span class="mf">127.0.0.1</span> <span class="mi">22</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">Failing</span> <span class="k">with</span> <span class="n">exit</span> <span class="n">code</span> <span class="mi">1</span> <span class="n">at</span> <span class="o">/</span><span class="n">home</span><span class="o">/</span><span class="n">jakub</span><span class="o">/</span><span class="n">d</span><span class="o">/</span><span class="n">kb</span><span class="o">/</span><span class="n">other</span><span class="o">/</span><span class="n">t</span><span class="o">.</span><span class="n">sh</span><span class="p">:</span><span class="mi">20</span> <span class="ow">in</span> <span class="n">command</span><span class="p">:</span> <span class="n">nc</span> <span class="o">-</span><span class="n">zw</span> <span class="mi">3</span> <span class="mf">127.0.0.1</span> <span class="mi">22</span>
 </pre></div>
 </div>
 </section>
