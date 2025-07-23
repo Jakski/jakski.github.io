@@ -1,4 +1,4 @@
-2025-07-23 Why are my logs from unshare not appearing in journald?
+2025-07-23 Why logs from unshare doesn't appear in journald?
 ================================================================================
 
 Recently I was rewriting some of my Bash scripts for spawning userspace
