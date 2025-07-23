@@ -43,13 +43,13 @@ started to kick in: so I have a process which is able to write to journald,
 buffering is out of question, yet nothing appears in `journalctl --user -u
 name.service`?!
 
-This made me wonder how journald is actually receiving logs? ChatGPT suggested
-that maybe it doesn't have permissions to read output, because I'm using
+This made me wonder how journald actually receives logs? ChatGPT suggested
+that maybe it doesn't have permissions to read output, because I use
 `--setuid 0` with `unshare` command. Of course didn't make much sense.
 Descriptor is already opened, so why changing UID would break it?
 
 We're talking about I/O here, so obviously it should be debuggable by tracing
-system calls, right? But how journald is actually receiving logs? Let's take a
+system calls, right? But how journald actually receives logs? Let's take a
 peek at descriptors of process started as systemd service with
 `StandardOutput=journal` and `StandardError=journal`:
 
@@ -72,16 +72,16 @@ service manager there's only one instance of journald systemd-wide:
    root 571 1 0 12:04 ? 00:00:05 /lib/systemd/systemd-journald
 
 Well, now let's print some unique message in logs and see with strace whether
-journald is actually receiving it:
+journald actually receives it:
 
 ::
 
    root@taro:~# strace -e trace=%net -f -p 571 2>&1 | grep 'unique log string'
    recvmsg(19, {msg_name=NULL, msg_namelen=0, msg_iov=[{iov_base="unique log string\n", iov_len=2055}], msg_iovlen=1, msg_control=[{cmsg_len=28, cmsg_level=SOL_SOCKET, cmsg_type=SCM_CREDENTIALS, cmsg_data={pid=7850, uid=100000, gid=1000}}], msg_controllen=32, msg_flags=MSG_CMSG_CLOEXEC}, MSG_DONTWAIT|MSG_CMSG_CLOEXEC) = 18
 
-Nice, so journald is actually receiving my logs. Take a note that `recvmsg`
-system call is having quite some parameters to it. It actually contains UID of
-sender! So journald is aware who is writing a log. My UID is 1000, but in
+Nice, so journald actually receives my logs. Take a note that `recvmsg`
+system call has quite some parameters to it. It actually contains UID of
+sender! So journald is aware who writes a log. My UID is 1000, but in
 container UIDs are mapped and containerized process ends up running as 100000 as
 visible from parent namespace. Why UID even appers when receiving a packet over
 socket? It's a UNIX socket and UNIX sockets can be created with option
@@ -100,7 +100,7 @@ are actually written to a different file:
    -rw-r-----+ 1 root systemd-journal 8.0M Jul 23 13:27 user-1000.journal
    -rw-r-----+ 1 root systemd-journal 8.0M Jul 23 13:28 user-100000.journal
 
-So... journald is actually receiving and persisting my logs? How can I access
+So... journald actually receives and persists my logs? How can I access
 them then? Apparently `journalctl` allows specifying filters:
 
 ::
