@@ -1,0 +1,120 @@
+2025-07-23 Why are my logs from unshare not appearing in journald?
+================================================================================
+
+Recently I was rewriting some of my Bash scripts for spawning userspace
+containers to Python and noticed that once I run `unshare` command with Python
+script I no longer see logs, even if Python interpreter crashes with exception.
+
+The general idea is that I use
+`StartTransientUnit <https://www.freedesktop.org/wiki/Software/systemd/dbus/>`_
+call from systemd DBus API to spawn a temporary service with user manager. There
+are typically multiple services involved to implement user-mode networking and
+filter DBus communication from containerized application, but one of them -
+init, is placed completely in target namespaces and runs with mapped UID.
+
+First thought? Probably Python output buffering messes logging. It's a common
+issue, which can be solve by either passing `-u` flag to interpreter or
+environment variable `PYTHONUNBUFFERED`. Since I invoke application directly
+from venv bin directory, passing `-u` would require me to prefix invocation with
+path to interpreter. Instead I extended my DBus API wrapper to optionally
+include environment variables:
+
+.. code-block:: python
+
+   def run(self, name, *cmd, env=None, description=None):
+       props = [
+           ("Type", "simple"),
+           ("ExecStart", [(cmd[0], list(cmd), False)]),
+       ]
+       if description:
+           props.append(("Description", description))
+       if env:
+           props.append(("Environment", [f"{k}={v}" for k, v in env.items()]))
+       self.manager.StartTransientUnit(
+           f"{name}.service",
+           "replace",
+           props,
+           [],
+       )
+
+No effect, so I did some printing in loop hoping to maybe bust some other
+buffering that I'm not aware of? Still no effect. At this point frustration
+started to kick in: so I have a process which is able to write to journald,
+buffering is out of question, yet nothing appears in `journalctl --user -u
+name.service`?!
+
+This made me wonder how journald is actually receiving logs? ChatGPT suggested
+that maybe it doesn't have permissions to read output, because I'm using
+`--setuid 0` with `unshare` command. Of course didn't make much sense.
+Descriptor is already opened, so why changing UID would break it?
+
+We're talking about I/O here, so obviously it should be debuggable by tracing
+system calls, right? But how journald is actually receiving logs? Let's take a
+peek at descriptors of process started as systemd service with
+`StandardOutput=journal` and `StandardError=journal`:
+
+::
+
+   root@taro:~# ls -alrth /proc/7349/fd
+   total 0
+   dr-xr-xr-x 9 100000 jakub  0 Jul 23 13:14 ..
+   lrwx------ 1 100000 jakub 64 Jul 23 13:17 2 -> 'socket:[67394]'
+   lrwx------ 1 100000 jakub 64 Jul 23 13:17 1 -> 'socket:[67394]'
+   lr-x------ 1 100000 jakub 64 Jul 23 13:17 0 -> /dev/null
+   dr-x------ 2 100000 jakub  0 Jul 23 13:17 .
+
+I had trouble tracing this socket back to the listening process, but unlike
+service manager there's only one instance of journald systemd-wide:
+
+::
+
+   root@taro:~# ps -ef | grep journal
+   root 571 1 0 12:04 ? 00:00:05 /lib/systemd/systemd-journald
+
+Well, now let's print some unique message in logs and see with strace whether
+journald is actually receiving it:
+
+::
+
+   root@taro:~# strace -e trace=%net -f -p 571 2>&1 | grep 'unique log string'
+   recvmsg(19, {msg_name=NULL, msg_namelen=0, msg_iov=[{iov_base="unique log string\n", iov_len=2055}], msg_iovlen=1, msg_control=[{cmsg_len=28, cmsg_level=SOL_SOCKET, cmsg_type=SCM_CREDENTIALS, cmsg_data={pid=7850, uid=100000, gid=1000}}], msg_controllen=32, msg_flags=MSG_CMSG_CLOEXEC}, MSG_DONTWAIT|MSG_CMSG_CLOEXEC) = 18
+
+Nice, so journald is actually receiving my logs. Take a note that `recvmsg`
+system call is having quite some parameters to it. It actually contains UID of
+sender! So journald is aware who is writing a log. My UID is 1000, but in
+container UIDs are mapped and containerized process ends up running as 100000 as
+visible from parent namespace. Why UID even appers when receiving a packet over
+socket? It's a UNIX socket and UNIX sockets can be created with option
+`SO_PASSCRED
+<https://www.man7.org/linux/man-pages/man7/unix.7.html>`_.
+
+This probably wouldn't change anything, if service has been started from system
+service manager, but we're talking about user's - unprivileged system manager. I
+decided to inspect journald files and discovered that logs emitted by UID 100000
+are actually written to a different file:
+
+::
+
+   root@taro:~# ls -alrth /var/log/journal/95bd774b11f9473181cb61a0c056c318/ | tail -n 3
+   -rw-r-----+ 1 root systemd-journal 8.0M Jul 23 13:24 system.journal
+   -rw-r-----+ 1 root systemd-journal 8.0M Jul 23 13:27 user-1000.journal
+   -rw-r-----+ 1 root systemd-journal 8.0M Jul 23 13:28 user-100000.journal
+
+So... journald is actually receiving and persisting my logs? How can I access
+them then? Apparently `journalctl` allows specifying filters:
+
+::
+
+   root@taro:~# journalctl _UID=100000 -n 5
+   Jul 23 13:37:53 taro unshare[7850]: unique log string
+   Jul 23 13:37:54 taro unshare[7850]: unique log string
+   Jul 23 13:37:55 taro unshare[7850]: unique log string
+   Jul 23 13:37:56 taro unshare[7850]: unique log string
+   Jul 23 13:37:57 taro unshare[7850]: unique log string
+
+And there are my logs! Now how to access them from user who actually created the
+service? Beats me. Maybe I will discover it later. For now I can at least debug
+failures from service in userspace with mapped UIDs. Switching to root for this
+purpose is less then ideal, but at least it works. I can think of some
+workarounds like piping output via `cat` to overwrite UID passed over UNIX
+socket to journald.
